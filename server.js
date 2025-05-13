@@ -38,17 +38,29 @@ function handleEvent(event) {
 
     const userId = event.source.userId;
     const text = event.message.text.trim();
-
     const valid = ['研究室', '実験室', '学内', '学外'];
+
     if (!valid.includes(text)) {
         return client.replyMessage(event.replyToken, {
             type: 'text',
-            text: `「研究室」「実験室」「学内」「学外」から選んでね。`
+            text: 'どこにいるのか教えてね！',
+            quickReply: {
+                items: valid.map(option => ({
+                    type: 'action',
+                    action: {
+                        type: 'message',
+                        label: option,
+                        text: option
+                    }
+                }))
+            }
         });
     }
 
-    memberStatus[userId] = text; // 状態を保存
+    // ステータス更新
+    memberStatus[userId] = text;
 
+    // 鍵の状態を取得
     const keyStatus = getKeyStatus(memberStatus);
 
     return client.replyMessage(event.replyToken, {
