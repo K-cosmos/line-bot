@@ -74,19 +74,24 @@ function updateKeyStatus() {
     let messages = [];
     let keyStatusChanged = false;
 
+    // 研究室と実験室の鍵の状態をチェック
     for (const area of ['研究室', '実験室']) {
         const inArea = Object.entries(members).filter(([_, s]) => s === area);
         const allOutside = Object.values(members).every(s => s === '学外');
 
-        let newStatus = '×';
+        let newStatus = keyStatus[area]; // 変更後の鍵の状態
         if (inArea.length > 0) {
-            newStatus = '〇';
+            newStatus = '〇'; // 誰かがその部屋にいる場合
         } else if (!allOutside) {
-            const candidate = Object.entries(members).find(([_, s]) => s !== '学外');
-            if (candidate) {
-                promptReturnKey(candidate[0], area); // 鍵返却確認
-                newStatus = '△';
+            // 誰もいない場合、かつ学内や実験室にいる人がいる場合
+            if (keyStatus[area] === '×') {
+                // 鍵が一度×になった場合、そのまま×のままで維持
+                continue;
             }
+            newStatus = '△'; // 鍵の状態を保留にする
+        } else {
+            // 全員が学外の場合、鍵は×に
+            newStatus = '×';
         }
 
         if (keyStatus[area] !== newStatus) {
@@ -96,8 +101,8 @@ function updateKeyStatus() {
         }
     }
 
+    // 鍵の状態が変更された場合のみ通知
     if (keyStatusChanged) {
-        // 鍵の状態が変更された場合のみ通知
         broadcastKeyStatus(messages.join('\n'));
     }
 }
