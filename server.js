@@ -15,8 +15,8 @@ const config = {
 
 const client = new Client(config);
 
-// メンバーの状態
-const members = {};  // userId -> ステータス
+// メンバー状態と鍵状態
+const members = {};  // userId -> status
 const keyStatus = {
     '研究室': '×',
     '実験室': '×'
@@ -52,7 +52,7 @@ function handleEvent(event) {
     return Promise.resolve(null);
 }
 
-// ステータス変更
+// ステータス変更処理
 function handleStatusChange(event) {
     const userId = event.source.userId;
     const newStatus = event.postback.data;
@@ -66,32 +66,29 @@ function handleStatusChange(event) {
 
     members[userId] = newStatus;
 
-    // まず「ステータスを変更しました」と送る
     return client.replyMessage(event.replyToken, {
         type: 'text',
         text: `ステータスを「${newStatus}」に更新しました。`
     }).then(() => {
-        // 鍵の状態を更新し、必要があれば鍵返却確認を送る
         return updateKeyStatus(userId);
     }).then(() => {
-        // すべて完了後、ステータス選択ボタンを表示
-        return sendStatusButtons(event.replyToken);
+        return sendStatusButtonsToUser(userId);  // replyTokenが使えないためpushで送る
     }).catch(err => {
         console.error('handleStatusChange error:', err);
     });
 }
 
-// 鍵の状態を更新し、必要なら送信
-function updateKeyStatus(userId) {
+// 鍵の状態を更新し必要に応じて確認も送る
+function updateKeyStatus(changedUserId) {
     let messages = [];
-    let keyStatusChanged = false;
-    let prompts = [];
+    const promptPromises = [];
 
     for (const area of ['研究室', '実験室']) {
         const inArea = Object.entries(members).filter(([_, s]) => s === area);
         const allOutside = Object.values(members).every(s => s === '学外');
 
         let newStatus = keyStatus[area];
+
         if (inArea.length > 0) {
             newStatus = '〇';
         } else if (!allOutside) {
@@ -104,24 +101,21 @@ function updateKeyStatus(userId) {
         if (keyStatus[area] !== newStatus) {
             keyStatus[area] = newStatus;
             messages.push(`${area}：${newStatus}`);
-            keyStatusChanged = true;
 
-            // △になったとき、最後にいた人に確認を送る
-            if (newStatus === '△' && userId) {
-                prompts.push(promptReturnKey(userId, area));
+            if (newStatus === '△' && changedUserId) {
+                promptPromises.push(promptReturnKey(changedUserId, area));
             }
         }
     }
 
-    if (keyStatusChanged) {
-        broadcastKeyStatus(messages.join('\n'));
+    if (messages.length > 0) {
+        broadcastKeyStatus(`🔐 鍵の状態\n${messages.join('\n')}`);
     }
 
-    // すべてのプロンプト送信をまとめて返す
-    return Promise.all(prompts);
+    return Promise.all(promptPromises);
 }
 
-// △時に「鍵返しますか？」と確認
+// 鍵返却確認（Yes/No）
 function promptReturnKey(userId, area) {
     return client.pushMessage(userId, {
         type: 'template',
@@ -142,29 +136,33 @@ function promptReturnKey(userId, area) {
                 }
             ]
         }
+    }).catch(err => {
+        console.error(`鍵返却確認の送信に失敗: ${err}`);
     });
 }
 
-// Yes/No回答処理
+// Yes/No 回答の処理
 function handleReturnKey(event) {
     const userId = event.source.userId;
     const data = event.postback.data;
-
     const [_, response, area] = data.split('_');
+
     if (!['研究室', '実験室'].includes(area)) return;
 
-    // 鍵の返却処理
     if (response === 'yes') {
         keyStatus[area] = '×';
     } else {
         keyStatus[area] = '△';
     }
 
-    // 鍵の状態更新後、全員に通知
-    broadcastKeyStatus(`${area}：${keyStatus[area]}`);
+    broadcastKeyStatus(`🔐 鍵の状態\n${area}：${keyStatus[area]}`);
 
-    // 最後に次のメニューを表示
-    return sendStatusButtons(event.replyToken, `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`);
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
+    }).then(() => {
+        return sendStatusButtonsToUser(userId);
+    });
 }
 
 // 鍵の状態を全員に通知
@@ -172,31 +170,48 @@ function broadcastKeyStatus(message) {
     Object.keys(members).forEach(userId => {
         client.pushMessage(userId, {
             type: 'text',
-            text: `🔐 鍵の状態\n${message}`
+            text: message
         }).catch(err => {
             console.error(`通知送信失敗（${userId}）:`, err);
         });
     });
 }
 
-// ステータス選択ボタン送信
-function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
-    const actions = areas.map(area => ({
-        type: 'postback',
-        label: area,
-        data: area
-    }));
-
-    return client.replyMessage(replyToken, {
+// メニュー送信（replyTokenなしでpush）
+function sendStatusButtonsToUser(userId) {
+    return client.pushMessage(userId, {
         type: 'template',
-        altText: msg,  // ボタンが表示されない場合の代替テキスト
+        altText: 'ステータスを選択してください',
         template: {
             type: 'buttons',
-            text: msg,
-            actions: actions
+            text: 'ステータスを選択してください：',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
         }
     }).catch((err) => {
-        console.error('Error sending status buttons:', err);
+        console.error('sendStatusButtonsToUser error:', err);
+    });
+}
+
+// メニュー送信（replyTokenありの初回用）
+function sendStatusButtons(replyToken) {
+    return client.replyMessage(replyToken, {
+        type: 'template',
+        altText: 'ステータスを選択してください',
+        template: {
+            type: 'buttons',
+            text: 'ステータスを選択してください：',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
+    }).catch((err) => {
+        console.error('sendStatusButtons error:', err);
     });
 }
 
