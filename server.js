@@ -3,12 +3,10 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const express = require('express');
-const bodyParser = require('body-parser');
 const { Client } = require('@line/bot-sdk');
 
 const app = express();
 app.use(express.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 
 const config = {
     channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -16,19 +14,18 @@ const config = {
 };
 
 const client = new Client(config);
-console.log('🔐 LINE設定:', config);
 
-// メンバーと鍵状態の初期化
-const members = {};
-const defaultStatus = '学外';
-const areas = ['研究室', '実験室'];
+// メンバーの状態
+const members = {};  // userId -> ステータス
 const keyStatus = {
     '研究室': '×',
     '実験室': '×'
 };
 
+const areas = ['研究室', '実験室', '学内', '学外'];
+
+// LINE webhook
 app.post('/webhook', (req, res) => {
-    console.log('Webhook received');
     Promise.all(req.body.events.map(handleEvent))
         .then(() => res.sendStatus(200))
         .catch(err => {
@@ -37,9 +34,8 @@ app.post('/webhook', (req, res) => {
         });
 });
 
+// イベント処理
 function handleEvent(event) {
-    console.log('Handling event:', event);
-
     if (event.type === 'postback') {
         const data = event.postback.data;
         if (data.startsWith('return_')) {
@@ -50,61 +46,51 @@ function handleEvent(event) {
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
-        return client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: 'ステータスを選択してください。'
-        });
+        return sendStatusButtons(event.replyToken);
     }
 
     return Promise.resolve(null);
 }
 
+// ステータス変更
 function handleStatusChange(event) {
     const userId = event.source.userId;
     const newStatus = event.postback.data;
+
+    if (!areas.includes(newStatus)) {
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: '無効なステータスです。'
+        });
+    }
+
     members[userId] = newStatus;
+    updateKeyStatus();
+    return sendStatusButtons(event.replyToken, `ステータスを「${newStatus}」に更新しました。`);
+}
 
-    const keyUpdate = updateKeyStatus();
-
-    let reply = `ステータスを「${newStatus}」に更新しました。\n\n🔑 鍵の状態\n`;
-    for (const area of areas) {
-        reply += `${area}：${keyStatus[area]}\n`;
-    }
-
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: reply.trim()
+// ステータス選択ボタン送信
+function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
+    return client.replyMessage(replyToken, {
+        type: 'template',
+        altText: 'ステータス選択メニュー',
+        template: {
+            type: 'buttons',
+            text: msg,
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
     });
 }
 
-function handleReturnKey(event) {
-    const userId = event.source.userId;
-    const data = event.postback.data;
-
-    if (!data.startsWith('return_')) return;
-
-    const [_, response, area] = data.split('_');
-    if (!areas.includes(area)) return;
-
-    if (response === 'yes') {
-        keyStatus[area] = '×';
-    } else {
-        keyStatus[area] = '△';
-    }
-
-    // 状態を全員に送信
-    broadcastKeyStatus(`${area}：${keyStatus[area]}`);
-
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
-    });
-}
-
+// 鍵の状態を更新し、必要なら送信
 function updateKeyStatus() {
     let messages = [];
 
-    for (const area of areas) {
+    for (const area of ['研究室', '実験室']) {
         const inArea = Object.entries(members).filter(([_, s]) => s === area);
         const allOutside = Object.values(members).every(s => s === '学外');
 
@@ -115,7 +101,7 @@ function updateKeyStatus() {
             const candidate = Object.entries(members).find(([_, s]) => s !== '学外');
             if (candidate) {
                 promptReturnKey(candidate[0], area);
-                newStatus = '△'; // 保留中
+                newStatus = '△';
             }
         }
 
@@ -130,20 +116,7 @@ function updateKeyStatus() {
     }
 }
 
-function broadcastKeyStatus(text) {
-    const userIds = Object.keys(members);
-    const message = {
-        type: 'text',
-        text: `🔐 鍵の状態が変わりました！\\n${text}`
-    };
-
-    userIds.forEach(userId => {
-        client.pushMessage(userId, message).catch(err => {
-            console.error(`Error pushing to ${userId}:`, err);
-        });
-    });
-}
-
+// △時に「鍵返しますか？」と確認
 function promptReturnKey(userId, area) {
     client.pushMessage(userId, {
         type: 'template',
@@ -169,6 +142,39 @@ function promptReturnKey(userId, area) {
     });
 }
 
+// Yes/No回答処理
+function handleReturnKey(event) {
+    const userId = event.source.userId;
+    const data = event.postback.data;
+
+    const [_, response, area] = data.split('_');
+    if (!['研究室', '実験室'].includes(area)) return;
+
+    if (response === 'yes') {
+        keyStatus[area] = '×';
+    } else {
+        keyStatus[area] = '△';
+    }
+
+    broadcastKeyStatus(`${area}：${keyStatus[area]}`);
+
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
+    });
+}
+
+// 鍵の状態を全員に通知
+function broadcastKeyStatus(message) {
+    Object.keys(members).forEach(userId => {
+        client.pushMessage(userId, {
+            type: 'text',
+            text: `🔐 鍵の状態\n${message}`
+        }).catch(err => {
+            console.error(`通知送信失敗（${userId}）:`, err);
+        });
+    });
+}
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
