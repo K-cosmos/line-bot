@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿if (process.env.NODE_ENV !== 'production') {
+=======
+if (process.env.NODE_ENV !== 'production') {
+>>>>>>> b9add9568b483228c056695c0034af9cab3d0580
     require('dotenv').config();
 } // これが最初に必要です
 
