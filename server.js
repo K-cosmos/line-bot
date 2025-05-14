@@ -71,18 +71,22 @@ function handleStatusChange(event) {
 
 // ステータス選択ボタン送信
 function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
+    const actions = areas.map(area => ({
+        type: 'postback',
+        label: area,
+        data: area
+    }));
+
     return client.replyMessage(replyToken, {
         type: 'template',
-        altText: 'ステータス選択メニュー',
+        altText: msg,  // ボタンが表示されない場合の代替テキスト
         template: {
             type: 'buttons',
             text: msg,
-            actions: areas.map(area => ({
-                type: 'postback',
-                label: area,
-                data: area
-            }))
+            actions: actions
         }
+    }).catch((err) => {
+        console.error('Error sending status buttons:', err);
     });
 }
 
