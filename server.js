@@ -80,7 +80,7 @@ function handleStatusChange(event) {
 
 // 鍵の状態を更新し必要に応じて確認も送る
 function updateKeyStatus(changedUserId) {
-    let messages = [];
+    const statusMessages = [];
     const promptPromises = [];
 
     for (const area of ['研究室', '実験室']) {
@@ -92,25 +92,26 @@ function updateKeyStatus(changedUserId) {
         if (inArea.length > 0) {
             newStatus = '〇';
         } else if (!allOutside) {
-            if (keyStatus[area] === '×') continue;
+            if (keyStatus[area] === '×') continue; // 状態変わらないなら処理しない
             newStatus = '△';
         } else {
             newStatus = '×';
         }
 
-        if (keyStatus[area] !== newStatus) {
-            keyStatus[area] = newStatus;
-            messages.push(`${area}：${newStatus}`);
+        // 状態更新
+        keyStatus[area] = newStatus;
 
-            if (newStatus === '△' && changedUserId) {
-                promptPromises.push(promptReturnKey(changedUserId, area));
-            }
+        // △なら確認メッセージ送信
+        if (newStatus === '△' && changedUserId) {
+            promptPromises.push(promptReturnKey(changedUserId, area));
         }
+
+        // 常にメッセージに含める
+        statusMessages.push(`${area}：${newStatus}`);
     }
 
-    if (messages.length > 0) {
-        broadcastKeyStatus(`🔐 鍵の状態\n${messages.join('\n')}`);
-    }
+    const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
+    broadcastKeyStatus(statusText);
 
     return Promise.all(promptPromises);
 }
