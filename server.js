@@ -65,32 +65,39 @@ function handleStatusChange(event) {
     }
 
     members[userId] = newStatus;
-    updateKeyStatus(); // 鍵の状態を更新
-    return sendStatusButtons(event.replyToken, `ステータスを「${newStatus}」に更新しました。`);
+
+    // まず「ステータスを変更しました」と送る
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `ステータスを「${newStatus}」に更新しました。`
+    }).then(() => {
+        // 鍵の状態を更新し、必要があれば鍵返却確認を送る
+        return updateKeyStatus(userId);
+    }).then(() => {
+        // すべて完了後、ステータス選択ボタンを表示
+        return sendStatusButtons(event.replyToken);
+    }).catch(err => {
+        console.error('handleStatusChange error:', err);
+    });
 }
 
 // 鍵の状態を更新し、必要なら送信
-function updateKeyStatus() {
+function updateKeyStatus(userId) {
     let messages = [];
     let keyStatusChanged = false;
+    let prompts = [];
 
-    // 研究室と実験室の鍵の状態をチェック
     for (const area of ['研究室', '実験室']) {
         const inArea = Object.entries(members).filter(([_, s]) => s === area);
         const allOutside = Object.values(members).every(s => s === '学外');
 
-        let newStatus = keyStatus[area]; // 変更後の鍵の状態
+        let newStatus = keyStatus[area];
         if (inArea.length > 0) {
-            newStatus = '〇'; // 誰かがその部屋にいる場合
+            newStatus = '〇';
         } else if (!allOutside) {
-            // 誰もいない場合、かつ学内や実験室にいる人がいる場合
-            if (keyStatus[area] === '×') {
-                // 鍵が一度×になった場合、そのまま×のままで維持
-                continue;
-            }
-            newStatus = '△'; // 鍵の状態を保留にする
+            if (keyStatus[area] === '×') continue;
+            newStatus = '△';
         } else {
-            // 全員が学外の場合、鍵は×に
             newStatus = '×';
         }
 
@@ -98,20 +105,27 @@ function updateKeyStatus() {
             keyStatus[area] = newStatus;
             messages.push(`${area}：${newStatus}`);
             keyStatusChanged = true;
+
+            // △になったとき、最後にいた人に確認を送る
+            if (newStatus === '△' && userId) {
+                prompts.push(promptReturnKey(userId, area));
+            }
         }
     }
 
-    // 鍵の状態が変更された場合のみ通知
     if (keyStatusChanged) {
         broadcastKeyStatus(messages.join('\n'));
     }
+
+    // すべてのプロンプト送信をまとめて返す
+    return Promise.all(prompts);
 }
 
 // △時に「鍵返しますか？」と確認
 function promptReturnKey(userId, area) {
-    client.pushMessage(userId, {
+    return client.pushMessage(userId, {
         type: 'template',
-        altText: '鍵を返しますか？',
+        altText: `${area}の鍵を返しますか？`,
         template: {
             type: 'confirm',
             text: `${area}の鍵を返しますか？`,
@@ -128,8 +142,6 @@ function promptReturnKey(userId, area) {
                 }
             ]
         }
-    }).catch(err => {
-        console.error(`鍵返却確認の送信に失敗: ${err}`);
     });
 }
 
@@ -164,16 +176,6 @@ function broadcastKeyStatus(message) {
         }).catch(err => {
             console.error(`通知送信失敗（${userId}）:`, err);
         });
-    });
-}
-
-// △時に「鍵返しますか？」と確認
-function promptReturnKey(userId, area) {
-    client.pushMessage(userId, {
-        type: 'text',
-        text: `${area}の鍵を返しますか？`  // ボタンを表示せず、テキストだけで質問
-    }).catch(err => {
-        console.error(`鍵返却確認の送信に失敗: ${err}`);
     });
 }
 
