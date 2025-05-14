@@ -1,30 +1,28 @@
-﻿const express = require('express');
+﻿if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config();
+} // これが最初に必要です
+
+const express = require('express');
 const bodyParser = require('body-parser');
 const { Client } = require('@line/bot-sdk');
 
+// express.json()を使ってリクエストボディのパースを行う
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 const config = {
-    channelAccessToken: '2007403130',
-    channelSecret: '84762520e79effc21c5a9e8883a8b38d'
+    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+    channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
 const client = new Client(config);
 
-const memberStatus = {}; // ユーザーごとの状態を保存
+console.log('🔐 LINE設定:', config); // ←追加！
 
-// 鍵の状態を判定する関数
-function getKeyStatus(statuses) {
-    const values = Object.values(statuses);
-    const lab = values.includes('研究室') ? '〇' :
-        values.some(s => ['学内', '実験室'].includes(s)) ? '△' : '×';
-    const lab2 = values.includes('実験室') ? '〇' :
-        values.some(s => ['研究室', '学内'].includes(s)) ? '△' : '×';
-    return { 研究室: lab, 実験室: lab2 };
-}
-
+// ログ出力を追加
 app.post('/webhook', (req, res) => {
+    console.log('Webhook received'); // ここでリクエスト受信を確認
     Promise.all(req.body.events.map(handleEvent))
         .then(() => res.sendStatus(200))
         .catch(err => {
@@ -34,39 +32,20 @@ app.post('/webhook', (req, res) => {
 });
 
 function handleEvent(event) {
-    if (event.type !== 'message' || event.message.type !== 'text') return Promise.resolve();
-
-    const userId = event.source.userId;
-    const text = event.message.text.trim();
-    const valid = ['研究室', '実験室', '学内', '学外'];
-
-    if (!valid.includes(text)) {
-        return client.replyMessage(event.replyToken, {
+    console.log('Handling event:', event);  // イベントをログに表示
+    if (event.type === 'message' && event.message.type === 'text') {
+        console.log('ReplyToken:', event.replyToken); // replyTokenの確認
+        client.replyMessage(event.replyToken, {
             type: 'text',
-            text: 'どこにいるのか教えてね！',
-            quickReply: {
-                items: valid.map(option => ({
-                    type: 'action',
-                    action: {
-                        type: 'message',
-                        label: option,
-                        text: option
-                    }
-                }))
-            }
-        });
+            text: `メッセージを受け取ったよ: ${event.message.text}`
+        })
+            .then(() => {
+                console.log('Reply sent successfully');
+            })
+            .catch((err) => {
+                console.error('Error in sending reply:', err);
+            });
     }
-
-    // ステータス更新
-    memberStatus[userId] = text;
-
-    // 鍵の状態を取得
-    const keyStatus = getKeyStatus(memberStatus);
-
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `ステータスを「${text}」に更新したよ！\n\n🔐 鍵の状態：\n研究室：${keyStatus.研究室}\n実験室：${keyStatus.実験室}`
-    });
 }
 
 const port = process.env.PORT || 3000;
