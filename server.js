@@ -167,6 +167,16 @@ function broadcastKeyStatus(message) {
     });
 }
 
+// △時に「鍵返しますか？」と確認
+function promptReturnKey(userId, area) {
+    client.pushMessage(userId, {
+        type: 'text',
+        text: `${area}の鍵を返しますか？`  // ボタンを表示せず、テキストだけで質問
+    }).catch(err => {
+        console.error(`鍵返却確認の送信に失敗: ${err}`);
+    });
+}
+
 // ステータス選択ボタン送信
 function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
     const actions = areas.map(area => ({
