@@ -65,34 +65,14 @@ function handleStatusChange(event) {
     }
 
     members[userId] = newStatus;
-    updateKeyStatus();
+    updateKeyStatus(); // 鍵の状態を更新
     return sendStatusButtons(event.replyToken, `ステータスを「${newStatus}」に更新しました。`);
-}
-
-// ステータス選択ボタン送信
-function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
-    const actions = areas.map(area => ({
-        type: 'postback',
-        label: area,
-        data: area
-    }));
-
-    return client.replyMessage(replyToken, {
-        type: 'template',
-        altText: msg,  // ボタンが表示されない場合の代替テキスト
-        template: {
-            type: 'buttons',
-            text: msg,
-            actions: actions
-        }
-    }).catch((err) => {
-        console.error('Error sending status buttons:', err);
-    });
 }
 
 // 鍵の状態を更新し、必要なら送信
 function updateKeyStatus() {
     let messages = [];
+    let keyStatusChanged = false;
 
     for (const area of ['研究室', '実験室']) {
         const inArea = Object.entries(members).filter(([_, s]) => s === area);
@@ -104,7 +84,7 @@ function updateKeyStatus() {
         } else if (!allOutside) {
             const candidate = Object.entries(members).find(([_, s]) => s !== '学外');
             if (candidate) {
-                promptReturnKey(candidate[0], area);
+                promptReturnKey(candidate[0], area); // 鍵返却確認
                 newStatus = '△';
             }
         }
@@ -112,10 +92,12 @@ function updateKeyStatus() {
         if (keyStatus[area] !== newStatus) {
             keyStatus[area] = newStatus;
             messages.push(`${area}：${newStatus}`);
+            keyStatusChanged = true;
         }
     }
 
-    if (messages.length > 0) {
+    if (keyStatusChanged) {
+        // 鍵の状態が変更された場合のみ通知
         broadcastKeyStatus(messages.join('\n'));
     }
 }
@@ -154,18 +136,18 @@ function handleReturnKey(event) {
     const [_, response, area] = data.split('_');
     if (!['研究室', '実験室'].includes(area)) return;
 
+    // 鍵の返却処理
     if (response === 'yes') {
         keyStatus[area] = '×';
     } else {
         keyStatus[area] = '△';
     }
 
+    // 鍵の状態更新後、全員に通知
     broadcastKeyStatus(`${area}：${keyStatus[area]}`);
 
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
-    });
+    // 最後に次のメニューを表示
+    return sendStatusButtons(event.replyToken, `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`);
 }
 
 // 鍵の状態を全員に通知
@@ -177,6 +159,27 @@ function broadcastKeyStatus(message) {
         }).catch(err => {
             console.error(`通知送信失敗（${userId}）:`, err);
         });
+    });
+}
+
+// ステータス選択ボタン送信
+function sendStatusButtons(replyToken, msg = 'ステータスを選択してください：') {
+    const actions = areas.map(area => ({
+        type: 'postback',
+        label: area,
+        data: area
+    }));
+
+    return client.replyMessage(replyToken, {
+        type: 'template',
+        altText: msg,  // ボタンが表示されない場合の代替テキスト
+        template: {
+            type: 'buttons',
+            text: msg,
+            actions: actions
+        }
+    }).catch((err) => {
+        console.error('Error sending status buttons:', err);
     });
 }
 
