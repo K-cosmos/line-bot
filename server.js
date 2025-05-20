@@ -110,7 +110,12 @@ function updateKeyStatus(changedUserId) {
     const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
     broadcastKeyStatus(statusText);
 
-    // 自分にもメニュー送信
+    // 🔽 鍵の確認がない場合はすぐメニューを送信
+    if (promptPromises.length === 0 && changedUserId) {
+        return sendStatusButtonsToUser(changedUserId);
+    }
+
+    // 🔽 鍵の確認後にメニュー送信
     return Promise.all(promptPromises).then(() => {
         return sendStatusButtonsToUser(changedUserId);
     });
