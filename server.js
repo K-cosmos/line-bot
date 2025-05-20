@@ -92,28 +92,28 @@ function updateKeyStatus(changedUserId) {
         if (inArea.length > 0) {
             newStatus = '〇';
         } else if (!allOutside) {
-            if (keyStatus[area] === '×') continue; // 状態変わらないなら処理しない
+            if (keyStatus[area] === '×') continue;
             newStatus = '△';
         } else {
             newStatus = '×';
         }
 
-        // 状態更新
         keyStatus[area] = newStatus;
 
-        // △なら確認メッセージ送信
         if (newStatus === '△' && changedUserId) {
             promptPromises.push(promptReturnKey(changedUserId, area));
         }
 
-        // 常にメッセージに含める
         statusMessages.push(`${area}：${newStatus}`);
     }
 
     const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
     broadcastKeyStatus(statusText);
 
-    return Promise.all(promptPromises);
+    // 自分にもメニュー送信
+    return Promise.all(promptPromises).then(() => {
+        return sendStatusButtonsToUser(changedUserId);
+    });
 }
 
 // 鍵返却確認（Yes/No）
@@ -171,7 +171,7 @@ function broadcastKeyStatus(message) {
     Object.keys(members).forEach(userId => {
         client.pushMessage(userId, {
             type: 'text',
-            text: `🔐 鍵の状態\n${message}`
+            text: message  // 🔐 鍵の状態 は updateKeyStatus で含める
         }).catch(err => {
             console.error(`通知送信失敗（${userId}）:`, err);
         });
