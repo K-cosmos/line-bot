@@ -216,6 +216,11 @@ function sendStatusButtons(replyToken) {
     });
 }
 
+// すでにある Express アプリにこの1行を追加
+app.get('/', (req, res) => {
+    res.send('LINE Bot is alive!');
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`LINE Bot is running on port ${port}`);
