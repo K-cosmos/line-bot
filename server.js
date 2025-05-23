@@ -104,8 +104,9 @@ function updateKeyStatus(changedUserId) {
     const promptPromises = [];
 
     for (const area of ['研究室', '実験室']) {
-        const inArea = Object.entries(members).filter(([_, s]) => s === area);
-        const allOutside = Object.values(members).every(s => s === '学外');
+        // ここ直したよ！
+        const inArea = Object.entries(members).filter(([_, info]) => info.status === area);
+        const allOutside = Object.values(members).every(info => info.status === '学外');
 
         let newStatus = keyStatus[area];
 
