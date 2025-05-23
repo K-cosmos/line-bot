@@ -104,23 +104,22 @@ function updateKeyStatus(changedUserId) {
     const promptPromises = [];
 
     for (const area of ['研究室', '実験室']) {
-        // ここ直したよ！
+        const currentStatus = keyStatus[area];
         const inArea = Object.entries(members).filter(([_, info]) => info.status === area);
         const allOutside = Object.values(members).every(info => info.status === '学外');
 
-         let newStatus = keyStatus[area];
+        let newStatus = currentStatus;
 
         if (inArea.length > 0) {
-            // まだ誰かいるなら「〇」
             newStatus = '〇';
         } else {
             if (allOutside) {
-                // 全員が学外 → 鍵は「×」
                 newStatus = '×';
-            } else {
-                // それ以外 → 鍵は「△」＋鍵返却確認
+            } else if (currentStatus !== '×') {
                 newStatus = '△';
-                if (changedUserId) {
+
+                // ここ！「△になった瞬間」だけ聞くように
+                if (currentStatus !== '△' && changedUserId) {
                     promptPromises.push(promptReturnKey(changedUserId, area));
                 }
             }
@@ -129,6 +128,16 @@ function updateKeyStatus(changedUserId) {
         keyStatus[area] = newStatus;
         statusMessages.push(`${area}：${newStatus}`);
     }
+
+    const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
+    broadcastKeyStatus(statusText);
+
+    if (promptPromises.length === 0 && changedUserId) {
+        return sendStatusButtonsToUser(changedUserId);
+    }
+
+    return Promise.all(promptPromises).then(() => sendStatusButtonsToUser(changedUserId));
+}
 
     const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
     broadcastKeyStatus(statusText);
