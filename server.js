@@ -180,25 +180,13 @@ function handleShowKeyStatus(event) {
         if (keyStatus[area] === '△') areasToPrompt.push(area);
     }
 
+    // △がなければ鍵状況だけ返信（ステータスメニューは送らない！）
     if (areasToPrompt.length === 0) {
-        // △なしなら鍵状況＋ステータスボタンをまとめて送る
-        return client.replyMessage(event.replyToken, [
-            { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
-        ]);
-    } else if (areasToPrompt.length === 1) {
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: `🔐 鍵の状態\n${messagesText.join('\n')}`
+        });
+    }else if (areasToPrompt.length === 1) {
         // △1つなら鍵状況＋返却確認＋ステータスボタンまとめて返信
         return client.replyMessage(event.replyToken, [
             { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
@@ -214,19 +202,6 @@ function handleShowKeyStatus(event) {
                     ]
                 }
             },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
         ]);
     } else if (areasToPrompt.length === 2) {
         // △2つなら鍵状況＋複数返却確認＋ステータスボタンまとめて返信
@@ -245,19 +220,6 @@ function handleShowKeyStatus(event) {
                     ]
                 }
             },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
         ]);
     }
 }
@@ -339,7 +301,8 @@ async function createStatusAndKeyReturnMessages(userId) {
                 actions: [
                     { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
                     { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
-                    { type: 'postback', label: '両方', data: 'return_yes_両方' }
+                    { type: 'postback', label: '両方', data: 'return_yes_両方' },
+                    { type: 'postback', label: '両方返さない', data: 'return_no_両方' }
                 ]
             }
         };
