@@ -160,39 +160,52 @@ function updateKeyStatus(changedUserId) {
 
     // △になったエリアがあれば確認する
     // △になったエリアがあれば確認する（複数あるかも！）
-if (changedUserId) {
-    const areasToPrompt = [];
-
-    for (const area of ['研究室', '実験室']) {
-        if (keyStatus[area] === '△') {
-            areasToPrompt.push(area);
+    if (changedUserId) {
+        const areasToPrompt = [];
+    
+        for (const area of ['研究室', '実験室']) {
+            if (keyStatus[area] === '△') {
+                areasToPrompt.push(area);
         }
     }
 
+    // △のエリアが複数ある場合に遅延して送る例
     if (areasToPrompt.length === 1) {
-        return promptReturnKey(changedUserId, areasToPrompt[0]);
+        return promptReturnKey(changedUserId, areasToPrompt[0], 0);  // 遅延0ms
     }
-
+    
     if (areasToPrompt.length === 2) {
-        return promptMultipleReturnKey(changedUserId);
+        return Promise.all([
+            promptReturnKey(changedUserId, '研究室', 0),
+            promptReturnKey(changedUserId, '実験室', 1000)
+        ]);
     }
 }
 return Promise.resolve();    
 }
 
-function promptReturnKey(userId, area) {
-    return client.pushMessage(userId, {
-        type: 'template',
-        altText: `${area}の鍵を返しますか？`,
-        template: {
-            type: 'confirm',
-            text: `${area}の鍵を返しますか？`,
-            actions: [
-                { type: 'postback', label: 'はい', data: `return_yes_${area}` },
-                { type: 'postback', label: 'いいえ', data: `return_no_${area}` }
-            ]
-        }
-    }).catch(err => console.error(`鍵返却確認の送信に失敗: ${err}`));
+// 1人に鍵返却確認メッセージを送る処理（もし複数連続で呼ばれるなら遅延を追加できる）
+function promptReturnKey(userId, area, delay = 0) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            client.pushMessage(userId, {
+                type: 'template',
+                altText: `${area}の鍵を返しますか？`,
+                template: {
+                    type: 'confirm',
+                    text: `${area}の鍵を返しますか？`,
+                    actions: [
+                        { type: 'postback', label: 'はい', data: `return_yes_${area}` },
+                        { type: 'postback', label: 'いいえ', data: `return_no_${area}` }
+                    ]
+                }
+            }).then(resolve)
+              .catch(err => {
+                console.error(`鍵返却確認の送信に失敗: ${err}`);
+                reject(err);
+              });
+        }, delay);
+    });
 }
 
 function handleReturnKey(event) {
@@ -216,20 +229,29 @@ function handleReturnKey(event) {
     }).then(() => sendStatusButtonsToUser(userId));
 }
 
-function promptMultipleReturnKey(userId) {
-    return client.pushMessage(userId, {
-        type: 'template',
-        altText: '鍵を返しますか？',
-        template: {
-            type: 'buttons',
-            text: 'どの鍵を返す？',
-            actions: [
-                { type: 'postback', label: '研究室の鍵を返す', data: 'return_yes_研究室' },
-                { type: 'postback', label: '実験室の鍵を返す', data: 'return_yes_実験室' },
-                { type: 'postback', label: '両方返す', data: 'return_yes_両方' }
-            ]
-        }
-    }).catch(err => console.error(`鍵返却（複数）確認の送信に失敗: ${err}`));
+// 複数鍵返却確認メニュー（ボタン）も遅延対応可能に
+function promptMultipleReturnKey(userId, delay = 0) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            client.pushMessage(userId, {
+                type: 'template',
+                altText: '鍵を返しますか？',
+                template: {
+                    type: 'buttons',
+                    text: 'どの鍵を返す？',
+                    actions: [
+                        { type: 'postback', label: '研究室の鍵を返す', data: 'return_yes_研究室' },
+                        { type: 'postback', label: '実験室の鍵を返す', data: 'return_yes_実験室' },
+                        { type: 'postback', label: '両方返す', data: 'return_yes_両方' }
+                    ]
+                }
+            }).then(resolve)
+              .catch(err => {
+                console.error(`鍵返却（複数）確認の送信に失敗: ${err}`);
+                reject(err);
+              });
+        }, delay);
+    });
 }
 
 function sendStatusButtonsToUser(userId) {
@@ -265,11 +287,14 @@ function sendStatusButtons(replyToken) {
 }
 
 function broadcastKeyStatus(message) {
-    Object.keys(members).forEach(userId => {
-        client.pushMessage(userId, {
-            type: 'text',
-            text: message
-        }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
+    const userIds = Object.keys(members);
+    userIds.forEach((userId, i) => {
+        setTimeout(() => {
+            client.pushMessage(userId, {
+                type: 'text',
+                text: message
+            }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
+        }, i * 1000); // 1秒ずつズラす
     });
 }
 
