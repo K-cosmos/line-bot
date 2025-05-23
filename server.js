@@ -139,16 +139,6 @@ function updateKeyStatus(changedUserId) {
     return Promise.all(promptPromises).then(() => sendStatusButtonsToUser(changedUserId));
 }
 
-    const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
-    broadcastKeyStatus(statusText);
-
-    if (promptPromises.length === 0 && changedUserId) {
-        return sendStatusButtonsToUser(changedUserId);
-    }
-
-    return Promise.all(promptPromises).then(() => sendStatusButtonsToUser(changedUserId));
-}
-
 function promptReturnKey(userId, area) {
     return client.pushMessage(userId, {
         type: 'template',
