@@ -9,7 +9,6 @@ const headers = {
 };
 
 async function createRichMenu() {
-    // ① リッチメニューの構成
     const richMenuData = {
         size: { width: 2500, height: 843 },
         selected: true,
@@ -31,28 +30,29 @@ async function createRichMenu() {
         ]
     };
 
-    // ② リッチメニュー作成
-    const res = await axios.post(`${LINE_API}/richmenu`, richMenuData, { headers });
-    const richMenuId = res.data.richMenuId;
-    console.log('✅ RichMenu作成成功:', richMenuId);
+    try {
+        const res = await axios.post(`${LINE_API}/richmenu`, richMenuData, { headers });
+        const richMenuId = res.data.richMenuId;
+        console.log('✅ RichMenu作成成功:', richMenuId);
 
-    // ③ 画像をアップロード
-    const imageBuffer = fs.readFileSync('richmenu.png');
-    await axios.post(
-        `${LINE_API}/richmenu/${richMenuId}/content`,
-        imageBuffer,
-        {
+        const imageBuffer = fs.readFileSync('./richmenu.png');
+        await axios({
+            method: 'put', // ✅ ここをPUTに
+            url: `${LINE_API}/richmenu/${richMenuId}/content`,
             headers: {
                 Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
                 'Content-Type': 'image/png'
-            }
-        }
-    );
-    console.log('✅ 画像アップロード成功');
+            },
+            data: imageBuffer
+        });
+        console.log('✅ 画像アップロード成功');
 
-    // ④ 全ユーザーにリッチメニューを適用
-    await axios.post(`${LINE_API}/user/all/richmenu/${richMenuId}`, {}, { headers });
-    console.log('✅ 全ユーザーにリッチメニューを適用しました');
+        await axios.post(`${LINE_API}/user/all/richmenu/${richMenuId}`, {}, { headers });
+        console.log('✅ 全ユーザーにリッチメニューを適用しました');
+
+    } catch (error) {
+        console.error('❌ エラーが発生しました:', error.response?.data || error.message);
+    }
 }
 
-createRichMenu().catch(console.error);
+createRichMenu();
