@@ -117,11 +117,12 @@ function handleStatusChange(event) {
 
 function updateKeyStatus(changedUserId) {
     const statusMessages = [];
-    const promptPromises = [];
+    let shouldPrompt = false;
+    let promptArea = null;
 
     for (const area of ['研究室', '実験室']) {
         const currentStatus = keyStatus[area];
-        const inArea = Object.entries(members).filter(([_, info]) => info.status === area);
+        const inArea = Object.values(members).filter(info => info.status === area);
         const allOutside = Object.values(members).every(info => info.status === '学外');
 
         let newStatus = currentStatus;
@@ -131,14 +132,10 @@ function updateKeyStatus(changedUserId) {
         } else if (allOutside) {
             newStatus = '×';
         } else {
-            // △にするのは「今が×以外」のときだけ
             if (currentStatus !== '×' && currentStatus !== '△') {
                 newStatus = '△';
-
-                // △になった瞬間だけ鍵返却を聞く！
-                if (changedUserId) {
-                    promptPromises.push(promptReturnKey(changedUserId, area));
-                }
+                shouldPrompt = true;
+                promptArea = area;
             }
         }
 
@@ -149,11 +146,15 @@ function updateKeyStatus(changedUserId) {
     const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
     broadcastKeyStatus(statusText);
 
-    if (promptPromises.length === 0 && changedUserId) {
+    if (shouldPrompt && changedUserId && promptArea) {
+        return promptReturnKey(changedUserId, promptArea).then(() =>
+            sendStatusButtonsToUser(changedUserId)
+        );
+    } else if (changedUserId) {
         return sendStatusButtonsToUser(changedUserId);
     }
 
-    return Promise.all(promptPromises).then(() => sendStatusButtonsToUser(changedUserId));
+    return Promise.resolve();
 }
 
 function promptReturnKey(userId, area) {
