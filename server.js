@@ -305,7 +305,7 @@ async function createStatusAndKeyReturnMessages(userId) {
 
     // ここからメッセージ生成
 
-    const baseTextMsg = { type: 'text', text: `ステータスを「${members[userId].status}」に更新}` };
+    const baseTextMsg = { type: 'text', text: `ステータスを「${members[userId].status}」に更新` };
 
     if (areasToPrompt.length === 0) {
         // △なし → ステータス更新と鍵状態のみ
@@ -345,7 +345,7 @@ async function createStatusAndKeyReturnMessages(userId) {
         };
     }
 
-    return [baseTextMsg, confirmTemplate, statusButtonsTemplate];
+    return [baseTextMsg, confirmTemplate];
 }
 
 
