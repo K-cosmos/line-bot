@@ -180,10 +180,9 @@ function updateKeyStatus(changedUserId) {
     }
     
     if (areasToPrompt.length === 2) {
-        return Promise.all([
-            promptReturnKey(changedUserId, '研究室', 0),
-            promptReturnKey(changedUserId, '実験室', 1000)
-        ]);
+        return promptReturnKey(changedUserId, areasToPrompt[0], 0).then(() => {
+            return promptReturnKey(changedUserId, areasToPrompt[1], 1500); // ← 連続送信防止
+        });
     }
 }
 return Promise.resolve();    
@@ -303,7 +302,7 @@ function broadcastKeyStatus(message) {
                 type: 'text',
                 text: message
             }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
-        }, i * 1000);
+        }, i * 1500);
     });
 }
 
