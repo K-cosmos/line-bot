@@ -159,10 +159,25 @@ function updateKeyStatus(changedUserId) {
     broadcastKeyStatus(statusText);
 
     // △になったエリアがあれば確認する
-    if (promptArea && changedUserId) {
-        return promptReturnKey(changedUserId, promptArea);
-    return Promise.resolve();
+    // △になったエリアがあれば確認する（複数あるかも！）
+if (changedUserId) {
+    const areasToPrompt = [];
+
+    for (const area of ['研究室', '実験室']) {
+        if (keyStatus[area] === '△') {
+            areasToPrompt.push(area);
+        }
     }
+
+    if (areasToPrompt.length === 1) {
+        return promptReturnKey(changedUserId, areasToPrompt[0]);
+    }
+
+    if (areasToPrompt.length === 2) {
+        return promptMultipleReturnKey(changedUserId);
+    }
+}
+return Promise.resolve();    
 }
 
 function promptReturnKey(userId, area) {
@@ -185,17 +200,38 @@ function handleReturnKey(event) {
     const data = event.postback.data;
     const [_, response, area] = data.split('_');
 
-    if (!['研究室', '実験室'].includes(area)) return;
+    if (area === '両方') {
+        ['研究室', '実験室'].forEach(a => {
+            keyStatus[a] = response === 'yes' ? '×' : '△';
+        });
+    } else if (['研究室', '実験室'].includes(area)) {
+        keyStatus[area] = response === 'yes' ? '×' : '△';
+    }
 
-    keyStatus[area] = response === 'yes' ? '×' : '△';
-
-    broadcastKeyStatus(`🔐 鍵の状態\n${area}：${keyStatus[area]}`);
+    broadcastKeyStatus(`🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`);
 
     return client.replyMessage(event.replyToken, {
         type: 'text',
         text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
     }).then(() => sendStatusButtonsToUser(userId));
 }
+
+function promptMultipleReturnKey(userId) {
+    return client.pushMessage(userId, {
+        type: 'template',
+        altText: '鍵を返しますか？',
+        template: {
+            type: 'buttons',
+            text: 'どの鍵を返す？',
+            actions: [
+                { type: 'postback', label: '研究室の鍵を返す', data: 'return_yes_研究室' },
+                { type: 'postback', label: '実験室の鍵を返す', data: 'return_yes_実験室' },
+                { type: 'postback', label: '両方返す', data: 'return_yes_両方' }
+            ]
+        }
+    }).catch(err => console.error(`鍵返却（複数）確認の送信に失敗: ${err}`));
+}
+
 
 function broadcastKeyStatus(message) {
     Object.keys(members).forEach(userId => {
