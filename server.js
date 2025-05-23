@@ -280,14 +280,20 @@ function handleShowKeyStatus(event) {
 
 // 全メンバー表示
 function handleShowAllMembers(event) {
-    let text = '現在のメンバーとステータス\n';
-    for (const [userId, member] of Object.entries(members)) {
-        text += `${member.name}：${member.status}\n`;
-    }
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text
+    const statusGroups = {};
+
+    Object.values(members).forEach(info => {
+        if (info.status === '学外') return;
+        if (!statusGroups[info.status]) statusGroups[info.status] = [];
+        statusGroups[info.status].push(info.name);
     });
+
+    const text = areas
+        .filter(area => area !== '学外' && statusGroups[area])
+        .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
+        .join('\n\n') || '全員学外';
+
+    return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
 const PORT = process.env.PORT || 3000;
