@@ -131,12 +131,14 @@ function updateKeyStatus(changedUserId) {
         } else {
             if (allOutside) {
                 newStatus = '×';
-            } else if (currentStatus !== '×') {
-                newStatus = '△';
+            } else {
+                if (currentStatus !== '△') {
+                    newStatus = '△';
 
-                // ここ！「△になった瞬間」だけ聞くように
-                if (currentStatus !== '△' && changedUserId) {
-                    promptPromises.push(promptReturnKey(changedUserId, area));
+                    // △になった瞬間だけ鍵返却を聞く！
+                    if (changedUserId) {
+                        promptPromises.push(promptReturnKey(changedUserId, area));
+                    }
                 }
             }
         }
