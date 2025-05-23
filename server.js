@@ -47,6 +47,20 @@ function handleEvent(event) {
 
         if (data === 'show_key_status') {
             const text = `🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`;
+        
+            // 鍵が△の部屋をチェック（最初の1個だけ対象にする）
+            const promptArea = ['研究室', '実験室'].find(area => keyStatus[area] === '△');
+        
+            if (promptArea) {
+                // ユーザーに確認メッセージ送る → ステータスボタンも忘れずに
+                return Promise.all([
+                    client.replyMessage(event.replyToken, { type: 'text', text }),
+                    promptReturnKey(event.source.userId, promptArea),
+                    sendStatusButtonsToUser(event.source.userId)
+                ]);
+            }
+        
+            // △なかったらそのままメッセージ送信
             return client.replyMessage(event.replyToken, { type: 'text', text });
         }
 
