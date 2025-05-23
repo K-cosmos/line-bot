@@ -128,17 +128,16 @@ function updateKeyStatus(changedUserId) {
 
         if (inArea.length > 0) {
             newStatus = '〇';
+        } else if (allOutside) {
+            newStatus = '×';
         } else {
-            if (allOutside) {
-                newStatus = '×';
-            } else {
-                if (currentStatus !== '△') {
-                    newStatus = '△';
+            // △にするのは「今が×以外」のときだけ
+            if (currentStatus !== '×' && currentStatus !== '△') {
+                newStatus = '△';
 
-                    // △になった瞬間だけ鍵返却を聞く！
-                    if (changedUserId) {
-                        promptPromises.push(promptReturnKey(changedUserId, area));
-                    }
+                // △になった瞬間だけ鍵返却を聞く！
+                if (changedUserId) {
+                    promptPromises.push(promptReturnKey(changedUserId, area));
                 }
             }
         }
