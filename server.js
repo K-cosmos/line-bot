@@ -122,7 +122,7 @@ function handleStatusChange(event) {
 
             return client.replyMessage(event.replyToken, {
                 type: 'text',
-                text: `ステータスを「${newStatus}」に更新しました`
+                text: `ステータスを「${newStatus}」に更新`
             });
         })
         .then(() => updateKeyStatus(userId))
@@ -144,8 +144,10 @@ function updateKeyStatus(changedUserId) {
             newStatus = '〇';
         } else if (allOutside) {
             newStatus = '×';
-        } else {
+        } else if (beforeStatus !== '×') {
             newStatus = '△';
+        } else {
+            newStatus = '×'; // 追加！
         }
 
         // 🔥 △に変わったタイミングを検出！
