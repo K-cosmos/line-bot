@@ -94,10 +94,6 @@ function handleEvent(event) {
         return handleStatusChange(event);
     }
 
-    if (event.type === 'message' && event.message.type === 'text') {
-        return sendStatusButtons(event.replyToken);
-    }
-
     return Promise.resolve(null);
 }
 
@@ -164,14 +160,9 @@ function updateKeyStatus(changedUserId) {
 
     // △になったエリアがあれば確認する
     if (promptArea && changedUserId) {
-        return promptReturnKey(changedUserId, promptArea).then(() =>
-            sendStatusButtonsToUser(changedUserId)
-        );
-    } else if (changedUserId) {
-        return sendStatusButtonsToUser(changedUserId);
-    }
-
+        return promptReturnKey(changedUserId, promptArea);
     return Promise.resolve();
+    }
 }
 
 function promptReturnKey(userId, area) {
@@ -213,38 +204,6 @@ function broadcastKeyStatus(message) {
             text: message
         }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
     });
-}
-
-function sendStatusButtonsToUser(userId) {
-    return client.pushMessage(userId, {
-        type: 'template',
-        altText: 'ステータスを選択:',
-        template: {
-            type: 'buttons',
-            text: 'ステータスを選択：',
-            actions: areas.map(area => ({
-                type: 'postback',
-                label: area,
-                data: area
-            }))
-        }
-    }).catch(err => console.error('sendStatusButtonsToUser error:', err));
-}
-
-function sendStatusButtons(replyToken) {
-    return client.replyMessage(replyToken, {
-        type: 'template',
-        altText: 'ステータスを選択:',
-        template: {
-            type: 'buttons',
-            text: 'ステータスを選択：',
-            actions: areas.map(area => ({
-                type: 'postback',
-                label: area,
-                data: area
-            }))
-        }
-    }).catch(err => console.error('sendStatusButtons error:', err));
 }
 
 function resetAllStatusesToOutside() {
