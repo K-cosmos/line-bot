@@ -274,7 +274,7 @@ function handleShowAllMembers(event) {
 
     const text = areas
         .filter(area => area !== '学外' && statusGroups[area])
-        .map(area => ${area}\n${statusGroups[area].map(name => ・${name}).join('\n')})
+        .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
         .join('\n\n') || '全員学外';
 
     return client.replyMessage(event.replyToken, { type: 'text', text });
