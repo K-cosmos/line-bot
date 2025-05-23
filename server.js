@@ -131,26 +131,26 @@ function handleStatusChange(event) {
 
 function updateKeyStatus(changedUserId) {
     const statusMessages = [];
-    let shouldPrompt = false;
     let promptArea = null;
 
     for (const area of ['研究室', '実験室']) {
-        const currentStatus = keyStatus[area];
+        const beforeStatus = keyStatus[area];
         const inArea = Object.values(members).filter(info => info.status === area);
         const allOutside = Object.values(members).every(info => info.status === '学外');
 
-        let newStatus = currentStatus;
+        let newStatus;
 
         if (inArea.length > 0) {
             newStatus = '〇';
         } else if (allOutside) {
             newStatus = '×';
         } else {
-            if (currentStatus !== '×' && currentStatus !== '△') {
-                newStatus = '△';
-                shouldPrompt = true;
-                promptArea = area;
-            }
+            newStatus = '△';
+        }
+
+        // 🔥 △に変わったタイミングを検出！
+        if (beforeStatus === '〇' && newStatus === '△') {
+            promptArea = area;
         }
 
         keyStatus[area] = newStatus;
@@ -160,7 +160,8 @@ function updateKeyStatus(changedUserId) {
     const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
     broadcastKeyStatus(statusText);
 
-    if (shouldPrompt && changedUserId && promptArea) {
+    // △になったエリアがあれば確認する
+    if (promptArea && changedUserId) {
         return promptReturnKey(changedUserId, promptArea).then(() =>
             sendStatusButtonsToUser(changedUserId)
         );
