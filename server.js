@@ -95,39 +95,84 @@ async function handleStatusChange(event) {
 }
 
 // 変更ユーザーがいない全体通知用
-async function updateKeyStatus(changedUserId) {
+// updateKeyStatusもasyncにして、鍵の状態をメンバーから再計算する関数にするよ
+async function updateKeyStatus() {
     const messagesText = [];
+
     for (const area of ['研究室', '実験室']) {
+        const before = keyStatus[area];
+        // そのエリアにいるメンバー数
+        const inArea = Object.values(members).filter(m => m.status === area);
+        // 全員が学外かどうか
+        const allOutside = Object.values(members).every(m => m.status === '学外');
+
+        let next = '×'; // デフォルト鍵なし
+        if (inArea.length > 0) next = '〇';
+        else if (!allOutside && before !== '×') next = '△';
+
+        if (before !== next) {
+            console.log(`[鍵更新] ${area}：${before} → ${next}`);
+            keyStatus[area] = next;
+        }
+
         messagesText.push(`${area}：${keyStatus[area]}`);
     }
-    if (!changedUserId) {
-        await broadcastKeyStatus(`🔐 鍵の状態\n${messagesText.join('\n')}`);
-    }
+
+    // 鍵状態を必要に応じて全員に通知する場合はここでbroadcastKeyStatus呼んでもOK
 }
 
 // 鍵返却の処理
-function handleReturnKey(event) {
+// handleReturnKeyをasyncにするの忘れないでね！
+async function handleReturnKey(event) {
     const userId = event.source.userId;
     const [_, response, area] = event.postback.data.split('_');
 
-    if (area === '両方') {
-        ['研究室', '実験室'].forEach(a => {
-            keyStatus[a] = response === 'yes' ? '×' : '△';
-        });
-    } else {
-        keyStatus[area] = response === 'yes' ? '×' : '△';
+    if (response === 'yes') {
+        // 返却「はい」なら、そのユーザーのステータスを学外にするよ
+        members[userId].status = '学外';
     }
 
-    // 鍵状態を全員に通知
-    broadcastKeyStatus(`🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`);
+    // 鍵状態はメンバーのステータスから自動計算するupdateKeyStatusを呼ぶよ
+    await updateKeyStatus();
 
+    const text = response === 'yes'
+        ? `鍵の返却：しました\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`
+        : `鍵の返却：しませんでした\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`;
+
+    // 全員に通知するよ
+    await broadcastKeyStatus(text);
+
+    // 返答メッセージを送る
     return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: response === 'yes'
-            ? `鍵の返却：しました\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`
-            : `鍵の返却：しませんでした\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`
+        text
     });
+}
 
+// updateKeyStatusもasyncにして、鍵の状態をメンバーから再計算する関数にするよ
+async function updateKeyStatus() {
+    const messagesText = [];
+
+    for (const area of ['研究室', '実験室']) {
+        const before = keyStatus[area];
+        // そのエリアにいるメンバー数
+        const inArea = Object.values(members).filter(m => m.status === area);
+        // 全員が学外かどうか
+        const allOutside = Object.values(members).every(m => m.status === '学外');
+
+        let next = '×'; // デフォルト鍵なし
+        if (inArea.length > 0) next = '〇';
+        else if (!allOutside && before !== '×') next = '△';
+
+        if (before !== next) {
+            console.log(`[鍵更新] ${area}：${before} → ${next}`);
+            keyStatus[area] = next;
+        }
+
+        messagesText.push(`${area}：${keyStatus[area]}`);
+    }
+
+    // 鍵状態を必要に応じて全員に通知する場合はここでbroadcastKeyStatus呼んでもOK
 }
 
 // ステータスボタンを送る（reply用）
