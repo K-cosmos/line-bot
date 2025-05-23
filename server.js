@@ -123,8 +123,11 @@ function handleReturnKey(event) {
 
     return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}'}`
+        text: response === 'yes'
+            ? `鍵の返却：しました\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`
+            : `鍵の返却：しませんでした\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`
     });
+
 }
 
 // ステータスボタンを送る（reply用）
