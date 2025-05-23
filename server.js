@@ -232,6 +232,37 @@ function promptMultipleReturnKey(userId) {
     }).catch(err => console.error(`鍵返却（複数）確認の送信に失敗: ${err}`));
 }
 
+function sendStatusButtonsToUser(userId) {
+    return client.pushMessage(userId, {
+        type: 'template',
+        altText: 'ステータスを選択:',
+        template: {
+            type: 'buttons',
+            text: 'ステータスを選択：',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
+    }).catch(err => console.error('sendStatusButtonsToUser error:', err));
+}
+
+function sendStatusButtons(replyToken) {
+    return client.replyMessage(replyToken, {
+        type: 'template',
+        altText: 'ステータスを選択:',
+        template: {
+            type: 'buttons',
+            text: 'ステータスを選択：',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
+    }).catch(err => console.error('sendStatusButtons error:', err));
+}
 
 function broadcastKeyStatus(message) {
     Object.keys(members).forEach(userId => {
