@@ -108,23 +108,25 @@ function updateKeyStatus(changedUserId) {
         const inArea = Object.entries(members).filter(([_, info]) => info.status === area);
         const allOutside = Object.values(members).every(info => info.status === '学外');
 
-        let newStatus = keyStatus[area];
+         let newStatus = keyStatus[area];
 
         if (inArea.length > 0) {
+            // まだ誰かいるなら「〇」
             newStatus = '〇';
-        } else if (!allOutside) {
-            if (keyStatus[area] === '×') continue;
-            newStatus = '△';
         } else {
-            newStatus = '×';
+            if (allOutside) {
+                // 全員が学外 → 鍵は「×」
+                newStatus = '×';
+            } else {
+                // それ以外 → 鍵は「△」＋鍵返却確認
+                newStatus = '△';
+                if (changedUserId) {
+                    promptPromises.push(promptReturnKey(changedUserId, area));
+                }
+            }
         }
 
         keyStatus[area] = newStatus;
-
-        if (newStatus === '△' && changedUserId) {
-            promptPromises.push(promptReturnKey(changedUserId, area));
-        }
-
         statusMessages.push(`${area}：${newStatus}`);
     }
 
