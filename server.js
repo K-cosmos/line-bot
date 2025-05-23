@@ -64,137 +64,44 @@ function handleEvent(event) {
 }
 
 // ステータス変更処理
-function handleStatusChange(event) {
+async function handleStatusChange(event) {
     const userId = event.source.userId;
     const newStatus = event.postback.data;
 
     if (!areas.includes(newStatus)) {
         return client.replyMessage(event.replyToken, {
             type: 'text',
-            text: '無効なステータスだよ！'
+            text: '無効なステータス'
         });
     }
 
-    return client.getProfile(userId).then(profile => {
+    try {
+        const profile = await client.getProfile(userId);
         members[userId] = {
             name: profile.displayName,
             status: newStatus
         };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
-        return client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: `ステータスを「${newStatus}」に更新`
-        });
-    }).then(() => updateKeyStatus(userId))
-      .catch(err => console.error('handleStatusChange error:', err));
+
+        // 鍵状況更新しつつ、返却確認のメッセージも一緒に作る関数を呼ぶ
+        const messages = await createStatusAndKeyReturnMessages(userId);
+
+        // replyMessageは一回だけ。まとめてメッセージを送る
+        return client.replyMessage(event.replyToken, messages);
+
+    } catch (err) {
+        console.error('handleStatusChange error:', err);
+    }
 }
 
-// 鍵状況の更新＆通知
+// 変更ユーザーがいない全体通知用
 async function updateKeyStatus(changedUserId) {
     const messagesText = [];
-    const areasToPrompt = [];
-
     for (const area of ['研究室', '実験室']) {
-        const before = keyStatus[area];
-        const inArea = Object.values(members).filter(m => m.status === area);
-        const allOutside = Object.values(members).every(m => m.status === '学外');
-
-        let next = '×';
-        if (inArea.length > 0) next = '〇';
-        else if (!allOutside && before !== '×') next = '△';
-
-        if (before !== next) {
-            console.log(`[鍵更新] ${area}：${before} → ${next}`);
-            keyStatus[area] = next;
-        }
-
-        if (before === '〇' && next === '△') areasToPrompt.push(area);
-
         messagesText.push(`${area}：${keyStatus[area]}`);
     }
-
     if (!changedUserId) {
-        // 変更ユーザーなしの場合は全員に通知だけ
         await broadcastKeyStatus(`🔐 鍵の状態\n${messagesText.join('\n')}`);
-        return;
-    }
-
-    if (areasToPrompt.length === 0) {
-        await pushMessageWithRetry(changedUserId, [
-            { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
-        ]);
-    } else if (areasToPrompt.length === 1) {
-        await pushMessageWithRetry(changedUserId, [
-            { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
-            {
-                type: 'template',
-                altText: `${areasToPrompt[0]}の鍵を返しますか？`,
-                template: {
-                    type: 'confirm',
-                    text: `${areasToPrompt[0]}の鍵を返しますか？`,
-                    actions: [
-                        { type: 'postback', label: 'はい', data: `return_yes_${areasToPrompt[0]}` },
-                        { type: 'postback', label: 'いいえ', data: `return_no_${areasToPrompt[0]}` }
-                    ]
-                }
-            },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
-        ]);
-    } else if (areasToPrompt.length === 2) {
-        await pushMessageWithRetry(changedUserId, [
-            { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
-            {
-                type: 'template',
-                altText: '鍵を返しますか？',
-                template: {
-                    type: 'buttons',
-                    text: 'どの鍵を返しますか？',
-                    actions: [
-                        { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
-                        { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
-                        { type: 'postback', label: '両方', data: 'return_yes_両方' }
-                    ]
-                }
-            },
-            {
-                type: 'template',
-                altText: 'ステータスを選択：',
-                template: {
-                    type: 'buttons',
-                    text: 'ステータスを選択',
-                    actions: areas.map(area => ({
-                        type: 'postback',
-                        label: area,
-                        data: area
-                    }))
-                }
-            }
-        ]);
     }
 }
 
@@ -217,7 +124,7 @@ function handleReturnKey(event) {
     return client.replyMessage(event.replyToken, {
         type: 'text',
         text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
-    }).then(() => sendStatusButtonsToUser(userId));
+    })
 }
 
 // ステータスボタンを送る（reply用）
@@ -355,14 +262,106 @@ function handleShowKeyStatus(event) {
     }
 }
 
-// 全メンバー表示（必要なら）
+// 全メンバー表示
 function handleShowAllMembers(event) {
-    const list = Object.values(members).map(m => `${m.name}：${m.status}`).join('\n') || 'まだ誰も登録していません。';
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `メンバー一覧\n${list}`
+    const statusGroups = {};
+
+    Object.values(members).forEach(info => {
+        if (info.status === '学外') return;
+        if (!statusGroups[info.status]) statusGroups[info.status] = [];
+        statusGroups[info.status].push(info.name);
     });
+
+    const text = areas
+        .filter(area => area !== '学外' && statusGroups[area])
+        .map(area => ${area}\n${statusGroups[area].map(name => ・${name}).join('\n')})
+        .join('\n\n') || '全員学外';
+
+    return client.replyMessage(event.replyToken, { type: 'text', text });
 }
+
+async function createStatusAndKeyReturnMessages(userId) {
+    const messagesText = [];
+    const areasToPrompt = [];
+
+    for (const area of ['研究室', '実験室']) {
+        const before = keyStatus[area];
+        const inArea = Object.values(members).filter(m => m.status === area);
+        const allOutside = Object.values(members).every(m => m.status === '学外');
+
+        let next = '×';
+        if (inArea.length > 0) next = '〇';
+        else if (!allOutside && before !== '×') next = '△';
+
+        if (before !== next) {
+            console.log(`[鍵更新] ${area}：${before} → ${next}`);
+            keyStatus[area] = next;
+        }
+
+        if (before === '〇' && next === '△') areasToPrompt.push(area);
+
+        messagesText.push(`${area}：${keyStatus[area]}`);
+    }
+
+    // ここからメッセージ生成
+
+    const baseTextMsg = { type: 'text', text: `ステータスを「${members[userId].status}」に更新\n🔐 鍵の状態\n${messagesText.join('\n')}` };
+
+    if (areasToPrompt.length === 0) {
+        // △なし → ステータス更新と鍵状態のみ
+        return [baseTextMsg];
+    }
+
+    // △あり → 鍵返却確認＋ステータスメニュー
+
+    let confirmTemplate;
+
+    if (areasToPrompt.length === 1) {
+        confirmTemplate = {
+            type: 'template',
+            altText: `${areasToPrompt[0]}の鍵を返しますか？`,
+            template: {
+                type: 'confirm',
+                text: `${areasToPrompt[0]}の鍵を返しますか？`,
+                actions: [
+                    { type: 'postback', label: 'はい', data: `return_yes_${areasToPrompt[0]}` },
+                    { type: 'postback', label: 'いいえ', data: `return_no_${areasToPrompt[0]}` }
+                ]
+            }
+        };
+    } else if (areasToPrompt.length === 2) {
+        confirmTemplate = {
+            type: 'template',
+            altText: '鍵を返しますか？',
+            template: {
+                type: 'buttons',
+                text: 'どの鍵を返しますか？',
+                actions: [
+                    { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
+                    { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
+                    { type: 'postback', label: '両方', data: 'return_yes_両方' }
+                ]
+            }
+        };
+    }
+
+    const statusButtonsTemplate = {
+        type: 'template',
+        altText: 'ステータスを選択：',
+        template: {
+            type: 'buttons',
+            text: 'ステータスを選択',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
+    };
+
+    return [baseTextMsg, confirmTemplate, statusButtonsTemplate];
+}
+
 
 // ポート起動
 const PORT = process.env.PORT || 3000;
