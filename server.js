@@ -80,13 +80,21 @@ function handleStatusChange(event) {
         });
     }
 
-    members[userId] = newStatus;
+    // ユーザー情報取得 & 更新
+    return client.getProfile(userId)
+        .then(profile => {
+            members[userId] = {
+                name: profile.displayName,
+                status: newStatus
+            };
 
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `ステータスを「${newStatus}」に更新`
-    }).then(() => updateKeyStatus(userId))
-      .catch(err => console.error('handleStatusChange error:', err));
+            return client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: `ステータスを「${newStatus}」に更新しました`
+            });
+        })
+        .then(() => updateKeyStatus(userId))
+        .catch(err => console.error('handleStatusChange error:', err));
 }
 
 function updateKeyStatus(changedUserId) {
