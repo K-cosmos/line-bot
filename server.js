@@ -52,7 +52,7 @@ function handleEvent(event) {
 
         if (data === 'show_all_members') {
             const statusGroups = {};
-        
+
             // 場所ごとにまとめる（学外はスキップ）
             Object.values(members).forEach(info => {
                 if (info.status === '学外') return;
@@ -61,16 +61,23 @@ function handleEvent(event) {
                 }
                 statusGroups[info.status].push(info.name);
             });
-        
+
             // 表示用の整形
             const text = areas
                 .filter(area => area !== '学外' && statusGroups[area])
                 .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
                 .join('\n\n') || '全員学外です。';
-        
+
             return client.replyMessage(event.replyToken, { type: 'text', text });
         }
 
+        // 🔑 鍵返却の確認（例：return_yes_研究室）
+        if (data.startsWith('return_')) {
+            return handleReturnKey(event);
+        }
+
+        // ✅ ステータス変更（研究室/実験室/学内/学外）
+        return handleStatusChange(event);
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
