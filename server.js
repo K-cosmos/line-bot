@@ -112,10 +112,10 @@ function handleReturnKey(event) {
 
     if (area === '両方') {
         ['研究室', '実験室'].forEach(a => {
-            keyStatus[a] = response === 'yes' ? '×' : keyStatus[a]; // ←ここ直す！
+            keyStatus[a] = response === 'yes' ? '×' : '△';
         });
     } else {
-        keyStatus[area] = response === 'yes' ? '×' : keyStatus[area]; // ←ここも！
+        keyStatus[area] = response === 'yes' ? '×' : '△';
     }
 
     // 鍵状態を全員に通知
@@ -207,7 +207,7 @@ function handleShowKeyStatus(event) {
             },
         ]);
     } else if (areasToPrompt.length === 2) {
-        // △2つなら鍵状況＋複数返却確認＋ステータスボタンまとめて返信
+        // △2つなら鍵状況＋複数返却確認
         return client.replyMessage(event.replyToken, [
             { type: 'text', text: `🔐 鍵の状態\n${messagesText.join('\n')}` },
             {
