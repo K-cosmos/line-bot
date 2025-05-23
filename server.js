@@ -51,17 +51,26 @@ function handleEvent(event) {
         }
 
         if (data === 'show_all_members') {
-            const text = Object.entries(members)
-                .map(([_, info]) => `${info.name}：${info.status}`)
-                .join('\n') || '誰も登録されていません。';
+            const statusGroups = {};
+        
+            // 場所ごとにまとめる（学外はスキップ）
+            Object.values(members).forEach(info => {
+                if (info.status === '学外') return;
+                if (!statusGroups[info.status]) {
+                    statusGroups[info.status] = [];
+                }
+                statusGroups[info.status].push(info.name);
+            });
+        
+            // 表示用の整形
+            const text = areas
+                .filter(area => area !== '学外' && statusGroups[area])
+                .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
+                .join('\n\n') || '全員学外です。';
+        
             return client.replyMessage(event.replyToken, { type: 'text', text });
         }
 
-        if (data.startsWith('return_')) {
-            return handleReturnKey(event);
-        } else {
-            return handleStatusChange(event);
-        }
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
