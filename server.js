@@ -7,6 +7,8 @@ const express = require('express');
 const fs = require('fs');
 const { Client } = require('@line/bot-sdk');
 
+const cron = require('node-cron');
+
 const app = express();
 app.use(express.json());
 
@@ -207,6 +209,26 @@ function sendStatusButtons(replyToken) {
         }
     }).catch(err => console.error('sendStatusButtons error:', err));
 }
+
+function resetAllStatusesToOutside() {
+    console.log('午前4時になったので全員のステータスを「学外」にリセットします');
+
+    Object.keys(members).forEach(userId => {
+        members[userId].status = '学外';
+    });
+
+    // 鍵の状態も更新
+    updateKeyStatus(null);
+}
+
+// 毎日午前4時に実行（日本時間）
+// 0 4 * * * は「毎日4時0分」の意味（UTCじゃないからタイムゾーン指定必須）
+cron.schedule('0 4 * * *', () => {
+    resetAllStatusesToOutside();
+}, {
+    scheduled: true,
+    timezone: "Asia/Tokyo"  // 日本時間でスケジューリング
+});
 
 app.get('/', (req, res) => {
     res.send('LINE Bot is alive!');
