@@ -15,23 +15,28 @@ const config = {
 };
 const client = new Client(config);
 
-// リトライ付き pushMessage 関数（最大3回リトライ）
-function pushMessageWithRetry(userId, message, retries = 3, delay = 1000) {
-    return client.pushMessage(userId, message).catch(err => {
-        if (retries > 0) {
-            console.warn(`pushMessage失敗、リトライします。残り回数: ${retries} エラー:`, err.message);
-            return new Promise(resolve => setTimeout(resolve, delay))
-                .then(() => pushMessageWithRetry(userId, message, retries - 1, delay * 2));
-        }
-        console.error(`pushMessage完全に失敗しました: ${userId}`, err);
-        throw err;
-    });
-}
-
 // 状態管理
 const areas = ['研究室', '実験室', '学内', '学外'];
 const members = {}; // userId -> { name, status }
 const keyStatus = { '研究室': '×', '実験室': '×' };
+
+// リトライ付きpushMessage関数
+async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 1500) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await client.pushMessage(userId, messages);
+            return; // 成功したら抜ける
+        } catch (err) {
+            console.error(`pushMessage失敗、リトライします。残り回数: ${maxRetries - attempt} エラー:`, err.message || err);
+            if (attempt === maxRetries) {
+                console.error(`pushMessage完全に失敗しました: ${userId}`, err);
+                throw err;  // 最大リトライで諦める
+            }
+            // 少し待ってからリトライ
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+}
 
 // Webhook エントリーポイント
 app.post('/webhook', (req, res) => {
@@ -85,7 +90,7 @@ function handleStatusChange(event) {
 }
 
 // 鍵の状態更新＆通知
-function updateKeyStatus(changedUserId) {
+async function updateKeyStatus(changedUserId) {
     const messages = [];
     const areasToPrompt = [];
 
@@ -108,19 +113,16 @@ function updateKeyStatus(changedUserId) {
         messages.push(`${area}：${next}`);
     }
 
-    broadcastKeyStatus(`🔐 鍵の状態\n${messages.join('\n')}`);
+    await broadcastKeyStatus(`🔐 鍵の状態\n${messages.join('\n')}`);
 
-    // △が1つなら即送信、2つなら少し遅延
     if (changedUserId) {
         if (areasToPrompt.length === 1) {
-            return promptReturnKey(changedUserId, areasToPrompt[0], 0);
+            await promptReturnKey(changedUserId, areasToPrompt[0], 0);
         } else if (areasToPrompt.length === 2) {
-            return promptReturnKey(changedUserId, areasToPrompt[0], 0)
-                .then(() => promptReturnKey(changedUserId, areasToPrompt[1], 1500));
+            await promptReturnKey(changedUserId, areasToPrompt[0], 0);
+            await promptReturnKey(changedUserId, areasToPrompt[1], 1500);
         }
     }
-
-    return Promise.resolve();
 }
 
 // 鍵返却確認（1エリア）
@@ -152,7 +154,7 @@ function promptMultipleReturnKey(userId, delay = 0) {
                 altText: '鍵を返しますか？',
                 template: {
                     type: 'buttons',
-                    text: 'どの鍵を返す？',
+                    text: 'どの鍵を返しますか？',
                     actions: [
                         { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
                         { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
@@ -220,15 +222,21 @@ function sendStatusButtonsToUser(userId) {
 }
 
 // 鍵状態を全ユーザーに通知
-function broadcastKeyStatus(message) {
-    Object.keys(members).forEach((userId, i) => {
-        setTimeout(() => {
-            pushMessageWithRetry(userId, {
+async function broadcastKeyStatus(message) {
+    const userIds = Object.keys(members);
+    for (let i = 0; i < userIds.length; i++) {
+        const userId = userIds[i];
+        try {
+            await pushMessageWithRetry(userId, {
                 type: 'text',
                 text: message
-            }).catch(err => console.error(`鍵通知失敗：${userId}`, err));
-        }, i * 1500);
-    });
+            });
+        } catch (err) {
+            console.error(`鍵通知失敗：${userId}`, err);
+        }
+        // 送信間隔あける（API制限対策）
+        await new Promise(r => setTimeout(r, 1500));
+    }
 }
 
 // ステータスリセット（毎朝4時）
@@ -262,35 +270,27 @@ function handleShowKeyStatus(event) {
             promptMultipleReturnKey(event.source.userId),
             sendStatusButtonsToUser(event.source.userId)
         ]);
+    } else {
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text
+        });
     }
-
-    return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
 // 全メンバー表示
 function handleShowAllMembers(event) {
-    const statusGroups = {};
-
-    Object.values(members).forEach(info => {
-        if (info.status === '学外') return;
-        if (!statusGroups[info.status]) statusGroups[info.status] = [];
-        statusGroups[info.status].push(info.name);
+    let text = '現在のメンバーとステータス\n';
+    for (const [userId, member] of Object.entries(members)) {
+        text += `${member.name}：${member.status}\n`;
+    }
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text
     });
-
-    const text = areas
-        .filter(area => area !== '学外' && statusGroups[area])
-        .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
-        .join('\n\n') || '全員学外';
-
-    return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
-// サーバー起動
-app.get('/', (req, res) => {
-    res.send('LINE Bot is alive!');
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log(`LINE Bot is running on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
