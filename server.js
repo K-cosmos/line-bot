@@ -50,7 +50,7 @@ function handleEvent(event) {
 
         if (data === 'show_all_members') {
             const text = Object.entries(members)
-                .map(([userId, status]) => `${userId}：${status}`)
+                .map(([_, info]) => `${info.name}：${info.status}`)
                 .join('\n') || '誰も登録されていません。';
             return client.replyMessage(event.replyToken, { type: 'text', text });
         }
