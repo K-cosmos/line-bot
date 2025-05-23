@@ -112,10 +112,10 @@ function handleReturnKey(event) {
 
     if (area === '両方') {
         ['研究室', '実験室'].forEach(a => {
-            keyStatus[a] = response === 'yes' ? '×' : '△';
+            keyStatus[a] = response === 'yes' ? '×' : keyStatus[a]; // ←ここ直す！
         });
     } else {
-        keyStatus[area] = response === 'yes' ? '×' : '△';
+        keyStatus[area] = response === 'yes' ? '×' : keyStatus[area]; // ←ここも！
     }
 
     // 鍵状態を全員に通知
@@ -123,8 +123,8 @@ function handleReturnKey(event) {
 
     return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
-    })
+        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした\n🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}'}`
+    });
 }
 
 // ステータスボタンを送る（reply用）
