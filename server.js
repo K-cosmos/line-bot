@@ -15,6 +15,19 @@ const config = {
 };
 const client = new Client(config);
 
+// リトライ付き pushMessage 関数（最大3回リトライ）
+function pushMessageWithRetry(userId, message, retries = 3, delay = 1000) {
+    return client.pushMessage(userId, message).catch(err => {
+        if (retries > 0) {
+            console.warn(`pushMessage失敗、リトライします。残り回数: ${retries} エラー:`, err.message);
+            return new Promise(resolve => setTimeout(resolve, delay))
+                .then(() => pushMessageWithRetry(userId, message, retries - 1, delay * 2));
+        }
+        console.error(`pushMessage完全に失敗しました: ${userId}`, err);
+        throw err;
+    });
+}
+
 // 状態管理
 const areas = ['研究室', '実験室', '学内', '学外'];
 const members = {}; // userId -> { name, status }
@@ -65,7 +78,7 @@ function handleStatusChange(event) {
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
         return client.replyMessage(event.replyToken, {
             type: 'text',
-            text: `ステータスを「${newStatus}」に更新したよ！`
+            text: `ステータスを「${newStatus}」に更新`
         });
     }).then(() => updateKeyStatus(userId))
       .catch(err => console.error('handleStatusChange error:', err));
@@ -114,7 +127,7 @@ function updateKeyStatus(changedUserId) {
 function promptReturnKey(userId, area, delay = 0) {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
-            client.pushMessage(userId, {
+            pushMessageWithRetry(userId, {
                 type: 'template',
                 altText: `${area}の鍵を返しますか？`,
                 template: {
@@ -134,16 +147,16 @@ function promptReturnKey(userId, area, delay = 0) {
 function promptMultipleReturnKey(userId, delay = 0) {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
-            client.pushMessage(userId, {
+            pushMessageWithRetry(userId, {
                 type: 'template',
                 altText: '鍵を返しますか？',
                 template: {
                     type: 'buttons',
                     text: 'どの鍵を返す？',
                     actions: [
-                        { type: 'postback', label: '研究室の鍵を返す', data: 'return_yes_研究室' },
-                        { type: 'postback', label: '実験室の鍵を返す', data: 'return_yes_実験室' },
-                        { type: 'postback', label: '両方返す', data: 'return_yes_両方' }
+                        { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
+                        { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
+                        { type: 'postback', label: '両方', data: 'return_yes_両方' }
                     ]
                 }
             }).then(resolve).catch(reject);
@@ -168,7 +181,7 @@ function handleReturnKey(event) {
 
     return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'したよ！' : 'してないよ～'}`
+        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
     }).then(() => sendStatusButtonsToUser(userId));
 }
 
@@ -179,7 +192,7 @@ function sendStatusButtons(replyToken) {
         altText: 'ステータスを選択：',
         template: {
             type: 'buttons',
-            text: 'ステータスを選んでね！',
+            text: 'ステータスを選択',
             actions: areas.map(area => ({
                 type: 'postback',
                 label: area,
@@ -191,12 +204,12 @@ function sendStatusButtons(replyToken) {
 
 // ステータスボタン送信（push用）
 function sendStatusButtonsToUser(userId) {
-    return client.pushMessage(userId, {
+    return pushMessageWithRetry(userId, {
         type: 'template',
         altText: 'ステータスを選択：',
         template: {
             type: 'buttons',
-            text: 'ステータスを選んでね！',
+            text: 'ステータスを選択',
             actions: areas.map(area => ({
                 type: 'postback',
                 label: area,
@@ -210,7 +223,7 @@ function sendStatusButtonsToUser(userId) {
 function broadcastKeyStatus(message) {
     Object.keys(members).forEach((userId, i) => {
         setTimeout(() => {
-            client.pushMessage(userId, {
+            pushMessageWithRetry(userId, {
                 type: 'text',
                 text: message
             }).catch(err => console.error(`鍵通知失敗：${userId}`, err));
@@ -267,7 +280,7 @@ function handleShowAllMembers(event) {
     const text = areas
         .filter(area => area !== '学外' && statusGroups[area])
         .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
-        .join('\n\n') || '全員学外だよ～！';
+        .join('\n\n') || '全員学外';
 
     return client.replyMessage(event.replyToken, { type: 'text', text });
 }
