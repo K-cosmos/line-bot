@@ -1,12 +1,9 @@
-// server.js
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
 const express = require('express');
-const fs = require('fs');
 const { Client } = require('@line/bot-sdk');
-
 const cron = require('node-cron');
 
 const app = express();
@@ -16,18 +13,14 @@ const config = {
     channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
     channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
 const client = new Client(config);
 
-// メンバー状態と鍵状態
-const members = {};  // userId -> status
-const keyStatus = {
-    '研究室': '×',
-    '実験室': '×'
-};
-
+// 状態管理
 const areas = ['研究室', '実験室', '学内', '学外'];
+const members = {}; // userId -> { name, status }
+const keyStatus = { '研究室': '×', '実験室': '×' };
 
+// Webhook エントリーポイント
 app.post('/webhook', (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
         .then(() => res.sendStatus(200))
@@ -37,66 +30,22 @@ app.post('/webhook', (req, res) => {
         });
 });
 
+// イベント処理
 function handleEvent(event) {
-    if (event.type === 'postback') {
-        const data = event.postback.data;
+    if (event.type !== 'postback') return Promise.resolve(null);
 
-        if (data === 'open_status_menu') {
-            return sendStatusButtons(event.replyToken);
-        }
+    const data = event.postback.data;
 
-        if (data === 'show_key_status') {
-            const text = `🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`;
-        
-            // 鍵が△の部屋をチェック（最初の1個だけ対象にする）
-            const promptArea = ['研究室', '実験室'].find(area => keyStatus[area] === '△');
-        
-            if (promptArea) {
-                // ユーザーに確認メッセージ送る → ステータスボタンも忘れずに
-                return Promise.all([
-                    client.replyMessage(event.replyToken, { type: 'text', text }),
-                    promptReturnKey(event.source.userId, promptArea),
-                    sendStatusButtonsToUser(event.source.userId)
-                ]);
-            }
-        
-            // △なかったらそのままメッセージ送信
-            return client.replyMessage(event.replyToken, { type: 'text', text });
-        }
+    if (data === 'open_status_menu') return sendStatusButtons(event.replyToken);
+    if (data === 'show_key_status') return handleShowKeyStatus(event);
+    if (data === 'show_all_members') return handleShowAllMembers(event);
+    if (data.startsWith('return_')) return handleReturnKey(event);
 
-        if (data === 'show_all_members') {
-            const statusGroups = {};
-
-            // 場所ごとにまとめる（学外はスキップ）
-            Object.values(members).forEach(info => {
-                if (info.status === '学外') return;
-                if (!statusGroups[info.status]) {
-                    statusGroups[info.status] = [];
-                }
-                statusGroups[info.status].push(info.name);
-            });
-
-            // 表示用の整形
-            const text = areas
-                .filter(area => area !== '学外' && statusGroups[area])
-                .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
-                .join('\n\n') || '全員学外です。';
-
-            return client.replyMessage(event.replyToken, { type: 'text', text });
-        }
-
-        // 🔑 鍵返却の確認（例：return_yes_研究室）
-        if (data.startsWith('return_')) {
-            return handleReturnKey(event);
-        }
-
-        // ✅ ステータス変更（研究室/実験室/学内/学外）
-        return handleStatusChange(event);
-    }
-
-    return Promise.resolve(null);
+    // ステータス変更
+    return handleStatusChange(event);
 }
 
+// ステータス変更処理
 function handleStatusChange(event) {
     const userId = event.source.userId;
     const newStatus = event.postback.data;
@@ -104,95 +53,67 @@ function handleStatusChange(event) {
     if (!areas.includes(newStatus)) {
         return client.replyMessage(event.replyToken, {
             type: 'text',
-            text: '無効なステータスです。'
+            text: '無効なステータスだよ！'
         });
     }
 
-    // ユーザー情報取得 & 更新
-    return client.getProfile(userId)
-        .then(profile => {
-            members[userId] = {
-                name: profile.displayName,
-                status: newStatus
-            };
-            console.log(`[変更] ${profile.displayName}(${userId}) → ステータスを「${newStatus}」に変更`);
-            return client.replyMessage(event.replyToken, {
-                type: 'text',
-                text: `ステータスを「${newStatus}」に更新`
-            });
-        })
-
-        .then(() => updateKeyStatus(userId))
-        .catch(err => console.error('handleStatusChange error:', err));
+    return client.getProfile(userId).then(profile => {
+        members[userId] = {
+            name: profile.displayName,
+            status: newStatus
+        };
+        console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: `ステータスを「${newStatus}」に更新したよ！`
+        });
+    }).then(() => updateKeyStatus(userId))
+      .catch(err => console.error('handleStatusChange error:', err));
 }
 
+// 鍵の状態更新＆通知
 function updateKeyStatus(changedUserId) {
-    const statusMessages = [];
-    let promptArea = null;
+    const messages = [];
+    const areasToPrompt = [];
 
     for (const area of ['研究室', '実験室']) {
-        const beforeStatus = keyStatus[area];
-        const inArea = Object.values(members).filter(info => info.status === area);
-        const allOutside = Object.values(members).every(info => info.status === '学外');
+        const before = keyStatus[area];
+        const inArea = Object.values(members).filter(m => m.status === area);
+        const allOutside = Object.values(members).every(m => m.status === '学外');
 
-        let newStatus;
+        let next = '×';
+        if (inArea.length > 0) next = '〇';
+        else if (!allOutside && before !== '×') next = '△';
 
-        if (inArea.length > 0) {
-            newStatus = '〇';
-        } else if (allOutside) {
-            newStatus = '×';
-        } else if (beforeStatus !== '×') {
-            newStatus = '△';
-        } else {
-            newStatus = '×'; // 追加！
+        if (before !== next) {
+            console.log(`[鍵更新] ${area}：${before} → ${next}`);
+            keyStatus[area] = next;
         }
 
-        if (beforeStatus !== newStatus) {
-            console.log(`[鍵更新] ${area}：${beforeStatus} → ${newStatus}`);
-        }
-    
-        if (beforeStatus === '〇' && newStatus === '△') {
-            console.log(`[確認必要] ${area}の鍵が△になったため確認対象`);
-            promptArea = area;
-        }
+        if (before === '〇' && next === '△') areasToPrompt.push(area);
 
-        keyStatus[area] = newStatus;
-        statusMessages.push(`${area}：${newStatus}`);
+        messages.push(`${area}：${next}`);
     }
 
-    const statusText = `🔐 鍵の状態\n${statusMessages.join('\n')}`;
-    broadcastKeyStatus(statusText);
+    broadcastKeyStatus(`🔐 鍵の状態\n${messages.join('\n')}`);
 
-    // △になったエリアがあれば確認する
-    // △になったエリアがあれば確認する（複数あるかも！）
+    // △が1つなら即送信、2つなら少し遅延
     if (changedUserId) {
-        const areasToPrompt = [];
-    
-        for (const area of ['研究室', '実験室']) {
-            if (keyStatus[area] === '△') {
-                areasToPrompt.push(area);
+        if (areasToPrompt.length === 1) {
+            return promptReturnKey(changedUserId, areasToPrompt[0], 0);
+        } else if (areasToPrompt.length === 2) {
+            return promptReturnKey(changedUserId, areasToPrompt[0], 0)
+                .then(() => promptReturnKey(changedUserId, areasToPrompt[1], 1500));
         }
     }
 
-    // △のエリアが複数ある場合に遅延して送る例
-    if (areasToPrompt.length === 1) {
-        return promptReturnKey(changedUserId, areasToPrompt[0], 0);  // 遅延0ms
-    }
-    
-    if (areasToPrompt.length === 2) {
-        return promptReturnKey(changedUserId, areasToPrompt[0], 0).then(() => {
-            return promptReturnKey(changedUserId, areasToPrompt[1], 1500); // ← 連続送信防止
-        });
-    }
-}
-return Promise.resolve();    
+    return Promise.resolve();
 }
 
-// 1人に鍵返却確認メッセージを送る処理（もし複数連続で呼ばれるなら遅延を追加できる）
+// 鍵返却確認（1エリア）
 function promptReturnKey(userId, area, delay = 0) {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
-            console.log(`[送信] ${userId} に「${area}の鍵を返しますか？」メッセージ送信（delay=${delay}ms）`);
             client.pushMessage(userId, {
                 type: 'template',
                 altText: `${area}の鍵を返しますか？`,
@@ -204,37 +125,12 @@ function promptReturnKey(userId, area, delay = 0) {
                         { type: 'postback', label: 'いいえ', data: `return_no_${area}` }
                     ]
                 }
-            }).then(resolve)
-              .catch(err => {
-                console.error(`鍵返却確認の送信に失敗: ${err}`);
-                reject(err);
-              });
+            }).then(resolve).catch(reject);
         }, delay);
     });
 }
 
-function handleReturnKey(event) {
-    const userId = event.source.userId;
-    const data = event.postback.data;
-    const [_, response, area] = data.split('_');
-
-    if (area === '両方') {
-        ['研究室', '実験室'].forEach(a => {
-            keyStatus[a] = response === 'yes' ? '×' : '△';
-        });
-    } else if (['研究室', '実験室'].includes(area)) {
-        keyStatus[area] = response === 'yes' ? '×' : '△';
-    }
-
-    broadcastKeyStatus(`🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`);
-
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `鍵の返却：${response === 'yes' ? 'しました' : 'しませんでした'}`
-    }).then(() => sendStatusButtonsToUser(userId));
-}
-
-// 複数鍵返却確認メニュー（ボタン）も遅延対応可能に
+// 鍵返却確認（複数用ボタン）
 function promptMultipleReturnKey(userId, delay = 0) {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -250,82 +146,133 @@ function promptMultipleReturnKey(userId, delay = 0) {
                         { type: 'postback', label: '両方返す', data: 'return_yes_両方' }
                     ]
                 }
-            }).then(resolve)
-              .catch(err => {
-                console.error(`鍵返却（複数）確認の送信に失敗: ${err}`);
-                reject(err);
-              });
+            }).then(resolve).catch(reject);
         }, delay);
     });
 }
 
-function sendStatusButtonsToUser(userId) {
-    console.log(`[送信] ${userId} にステータスボタンを送信`);
-    return client.pushMessage(userId, {
-        type: 'template',
-        altText: 'ステータスを選択:',
-        template: {
-            type: 'buttons',
-            text: 'ステータスを選択：',
-            actions: areas.map(area => ({
-                type: 'postback',
-                label: area,
-                data: area
-            }))
-        }
-    }).catch(err => console.error('sendStatusButtonsToUser error:', err));
+// 鍵返却処理
+function handleReturnKey(event) {
+    const userId = event.source.userId;
+    const [_, response, area] = event.postback.data.split('_');
+
+    if (area === '両方') {
+        ['研究室', '実験室'].forEach(a => {
+            keyStatus[a] = response === 'yes' ? '×' : '△';
+        });
+    } else {
+        keyStatus[area] = response === 'yes' ? '×' : '△';
+    }
+
+    broadcastKeyStatus(`🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`);
+
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `鍵の返却：${response === 'yes' ? 'したよ！' : 'してないよ～'}`
+    }).then(() => sendStatusButtonsToUser(userId));
 }
 
+// ステータスボタン送信（replyToken用）
 function sendStatusButtons(replyToken) {
     return client.replyMessage(replyToken, {
         type: 'template',
-        altText: 'ステータスを選択:',
+        altText: 'ステータスを選択：',
         template: {
             type: 'buttons',
-            text: 'ステータスを選択：',
+            text: 'ステータスを選んでね！',
             actions: areas.map(area => ({
                 type: 'postback',
                 label: area,
                 data: area
             }))
         }
-    }).catch(err => console.error('sendStatusButtons error:', err));
+    });
 }
 
+// ステータスボタン送信（push用）
+function sendStatusButtonsToUser(userId) {
+    return client.pushMessage(userId, {
+        type: 'template',
+        altText: 'ステータスを選択：',
+        template: {
+            type: 'buttons',
+            text: 'ステータスを選んでね！',
+            actions: areas.map(area => ({
+                type: 'postback',
+                label: area,
+                data: area
+            }))
+        }
+    });
+}
+
+// 鍵状態を全ユーザーに通知
 function broadcastKeyStatus(message) {
-    const userIds = Object.keys(members);
-    userIds.forEach((userId, i) => {
-        const logMessage = `[通知] ${userId} に鍵状況を送信（${message}）`;
-        console.log(logMessage);
+    Object.keys(members).forEach((userId, i) => {
         setTimeout(() => {
             client.pushMessage(userId, {
                 type: 'text',
                 text: message
-            }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
+            }).catch(err => console.error(`鍵通知失敗：${userId}`, err));
         }, i * 1500);
     });
 }
 
+// ステータスリセット（毎朝4時）
 function resetAllStatusesToOutside() {
-    console.log('午前4時になったので全員のステータスを「学外」にリセットします');
-
+    console.log('[定時処理] 全員を「学外」にリセット');
     Object.keys(members).forEach(userId => {
         members[userId].status = '学外';
     });
-
-    // 鍵の状態も更新
     updateKeyStatus(null);
 }
 
-// 毎日午前4時に実行（日本時間）
-// 0 4 * * * は「毎日4時0分」の意味（UTCじゃないからタイムゾーン指定必須）
-cron.schedule('0 4 * * *', () => {
-    resetAllStatusesToOutside();
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"  // 日本時間でスケジューリング
+// 毎日4時にリセット実行
+cron.schedule('0 4 * * *', resetAllStatusesToOutside, {
+    timezone: 'Asia/Tokyo'
 });
 
+// キー状態表示
+function handleShowKeyStatus(event) {
+    const text = `🔐 鍵の状態\n研究室：${keyStatus['研究室']}\n実験室：${keyStatus['実験室']}`;
+    const needPrompt = ['研究室', '実験室'].filter(a => keyStatus[a] === '△');
+
+    if (needPrompt.length === 1) {
+        return Promise.all([
+            client.replyMessage(event.replyToken, { type: 'text', text }),
+            promptReturnKey(event.source.userId, needPrompt[0]),
+            sendStatusButtonsToUser(event.source.userId)
+        ]);
+    } else if (needPrompt.length === 2) {
+        return Promise.all([
+            client.replyMessage(event.replyToken, { type: 'text', text }),
+            promptMultipleReturnKey(event.source.userId),
+            sendStatusButtonsToUser(event.source.userId)
+        ]);
+    }
+
+    return client.replyMessage(event.replyToken, { type: 'text', text });
+}
+
+// 全メンバー表示
+function handleShowAllMembers(event) {
+    const statusGroups = {};
+
+    Object.values(members).forEach(info => {
+        if (info.status === '学外') return;
+        if (!statusGroups[info.status]) statusGroups[info.status] = [];
+        statusGroups[info.status].push(info.name);
+    });
+
+    const text = areas
+        .filter(area => area !== '学外' && statusGroups[area])
+        .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
+        .join('\n\n') || '全員学外だよ～！';
+
+    return client.replyMessage(event.replyToken, { type: 'text', text });
+}
+
+// サーバー起動
 app.get('/', (req, res) => {
     res.send('LINE Bot is alive!');
 });
