@@ -115,12 +115,13 @@ function handleStatusChange(event) {
                 name: profile.displayName,
                 status: newStatus
             };
-
+            console.log(`[変更] ${profile.displayName}(${userId}) → ステータスを「${newStatus}」に変更`);
             return client.replyMessage(event.replyToken, {
                 type: 'text',
                 text: `ステータスを「${newStatus}」に更新`
             });
         })
+
         .then(() => updateKeyStatus(userId))
         .catch(err => console.error('handleStatusChange error:', err));
 }
@@ -146,8 +147,12 @@ function updateKeyStatus(changedUserId) {
             newStatus = '×'; // 追加！
         }
 
-        // 🔥 △に変わったタイミングを検出！
+        if (beforeStatus !== newStatus) {
+            console.log(`[鍵更新] ${area}：${beforeStatus} → ${newStatus}`);
+        }
+    
         if (beforeStatus === '〇' && newStatus === '△') {
+            console.log(`[確認必要] ${area}の鍵が△になったため確認対象`);
             promptArea = area;
         }
 
@@ -188,6 +193,7 @@ return Promise.resolve();
 function promptReturnKey(userId, area, delay = 0) {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
+            console.log(`[送信] ${userId} に「${area}の鍵を返しますか？」メッセージ送信（delay=${delay}ms）`);
             client.pushMessage(userId, {
                 type: 'template',
                 altText: `${area}の鍵を返しますか？`,
@@ -255,6 +261,7 @@ function promptMultipleReturnKey(userId, delay = 0) {
 }
 
 function sendStatusButtonsToUser(userId) {
+    console.log(`[送信] ${userId} にステータスボタンを送信`);
     return client.pushMessage(userId, {
         type: 'template',
         altText: 'ステータスを選択:',
@@ -289,12 +296,14 @@ function sendStatusButtons(replyToken) {
 function broadcastKeyStatus(message) {
     const userIds = Object.keys(members);
     userIds.forEach((userId, i) => {
+        const logMessage = `[通知] ${userId} に鍵状況を送信（${message}）`;
+        console.log(logMessage);
         setTimeout(() => {
             client.pushMessage(userId, {
                 type: 'text',
                 text: message
             }).catch(err => console.error(`通知送信失敗（${userId}）:`, err));
-        }, i * 1000); // 1秒ずつズラす
+        }, i * 1000);
     });
 }
 
