@@ -55,9 +55,9 @@ function recalcKeyStatus(lastUserId) {
             console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
             keyStatus[area] = next;
 
-            if (next === '×' && prev === '△' && allOutside && lastUserId) {
-                keyReturnedAreas.push(area);
-            }
+            if (next === '×' && prev !== '×' && allOutside && lastUserId) {
+    keyReturnedAreas.push(area);
+}
         }
     }
 
