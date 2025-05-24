@@ -55,7 +55,7 @@ function recalcKeyStatus(lastUserId) {
             console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
             keyStatus[area] = next;
 
-            if (next === '×' && prev !== '×' && allOutside && lastUserId) {
+            if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
     keyReturnedAreas.push(area);
 }
             const changedAreas = recalcKeyStatus(userId);  // ← ここでもう鍵の変化はわかってる
@@ -172,7 +172,7 @@ async function handleStatusChange(event, newStatus) {
         if (changedAreas.length > 0) {
             replyMessages.push({
                 type: 'text',
-                text: `⚠️ ${changedAreas.join('・')} の鍵、ちゃんと返却してね！`,
+                text: `${changedAreas.join('・')}の鍵、ちゃんと返してね！`,
             });
         }
 
