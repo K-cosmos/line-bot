@@ -59,7 +59,7 @@ function recalcKeyStatus() {
 function createKeyReturnConfirmQuickReply(areaList) {
     return {
         type: 'text',
-        text: '鍵を返却しますか？',
+        text: `${areaList.join('、')}の鍵を返却しますか？`,
         quickReply: {
             items: [
                 {
@@ -88,49 +88,48 @@ function formatKeyStatusText() {
 }
 
 async function handleEvent(event) {
-    console.log('ポストバック受信:', event.postback.data);
-    if (event.type === 'postback') {
-        const data = event.postback.data
-       if (data === 'show_key_status') {
-          return handleShowKeyStatus(event);
-       }
+    if (event.type !== 'postback') return;
 
-    if (data === 'show_all_members') {
+    const postbackData = event.postback.data;
+    console.log('ポストバック受信:', postbackData);
+
+    if (postbackData === 'show_key_status') {
+        return handleShowKeyStatus(event);
+    }
+
+    if (postbackData === 'show_all_members') {
         return handleShowAllMembers(event);
     }
 
-    if (data === 'open_status_menu') {
+    if (postbackData === 'open_status_menu') {
         const quickReply = {
             items: AREAS.map(area => ({
                 type: 'action',
                 action: {
-                     type: 'postback',
-                     label: area,
-                     data: area,
-               },
-        })),
-    };
+                    type: 'postback',
+                    label: area,
+                    data: area,
+                },
+            })),
+        };
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: 'ステータスを選択',
+            quickReply: quickReply,
+        });
+    }
 
-    if (data === 'return_yes' || data === 'return_no') {
-    return handleReturnKey(event);
-}
-        
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: 'ステータスを選択',
-        quickReply: quickReply,
-    });
-}
+    if (postbackData === 'return_yes' || postbackData === 'return_no') {
+        return handleReturnKey(event, postbackData);
+    }
 
-if (AREAS.includes(data)) {
-    return handleStatusChange(event);
-}
+    if (AREAS.includes(postbackData)) {
+        return handleStatusChange(event, postbackData);
     }
 }
 
-async function handleStatusChange(event) {
+async function handleStatusChange(event, newStatus) {
     const userId = event.source.userId;
-    const newStatus = event.postback.data;
 
     if (!AREAS.includes(newStatus)) {
         return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
@@ -138,13 +137,14 @@ async function handleStatusChange(event) {
 
     try {
         const profile = await client.getProfile(userId);
+        const oldStatus = members[userId]?.status;
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
         recalcKeyStatus();
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
+        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新したよ` };
 
         if (areasToPrompt.length === 0) {
             return client.replyMessage(event.replyToken, baseTextMsg);
@@ -160,22 +160,27 @@ async function handleStatusChange(event) {
     }
 }
 
-async function handleReturnKey(event) {
+async function handleReturnKey(event, postbackData) {
     const userId = event.source.userId;
-    const data = event.postback.data;
+    const prevStatus = members[userId]?.status;
 
-if (data === 'return_yes') {
-    if (members[userId]) members[userId].status = '学外';
-    // 鍵返却処理あり
-} else if (data === 'return_no') {
-    // 鍵返却処理なし
-}
+    let resultText = '';
+    if (postbackData === 'return_yes') {
+        if (members[userId]) members[userId].status = '学外';
+
+        // △→× に変える処理
+        for (const area of ['研究室', '実験室']) {
+            if (keyStatus[area] === '△' && prevStatus === area) {
+                keyStatus[area] = '×';
+            }
+        }
+
+        resultText = '鍵の返却：しました';
+    } else {
+        resultText = '鍵の返却：しませんでした';
+    }
 
     recalcKeyStatus();
-
-    const resultText = response === 'yes'
-        ? '鍵の返却：しました'
-        : '鍵の返却：しませんでした';
 
     const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
 
@@ -197,7 +202,7 @@ async function handleShowKeyStatus(event) {
 
     return client.replyMessage(event.replyToken, [
         { type: 'text', text: `🔐 鍵の状態\n${messagesText}` },
-        createKeyReturnConfirm(areasToPrompt),
+        createKeyReturnConfirmQuickReply(areasToPrompt),
     ]);
 }
 
