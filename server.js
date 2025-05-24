@@ -97,7 +97,7 @@ async function handleEvent(event) {
     if (event.type === 'postback') {
         const data = event.postback.data
        if (data === 'show_key_status') {
-          return handleKeyStatus(event);
+          return handleShowKeyStatus(event);
        }
 
     if (data === 'show_all_members') {
