@@ -44,38 +44,6 @@ function broadcastKeyStatus() {
     }
 }
 
-function recalcKeyStatus(lastUserId) {
-  const keyReturnedAreas = [];
-  let keyChanged = false;
-
-  for (const area of ['研究室', '実験室']) {
-    const prev = keyStatus[area];
-    const inArea = Object.values(members).filter(m => m.status === area).length;
-    const allOutside = Object.values(members).every(m => m.status === '学外');
-
-    let next = prev;
-    if (inArea > 0) next = '〇';
-    else if (!allOutside) next = '△';
-    else next = '×'; // ここだけallOutsideのときに×にする！
-
-    if (prev !== next) {
-      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
-      keyStatus[area] = next;
-      keyChanged = true;
-
-      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-        keyReturnedAreas.push(area);
-      }
-    }
-  }
-
-  if (keyChanged) {
-    broadcastKeyStatus();
-  }
-
-  return { keyReturnedAreas, keyChanged };
-}
-
 function createKeyReturnConfirmQuickReply(areaList) {
     return {
         type: 'text',
@@ -148,88 +116,59 @@ async function handleEvent(event) {
     }
 }
 
-async function handleStatusChange(event, newStatus) {
-    const userId = event.source.userId;
+function recalcKeyStatus(lastUserId) {
+  confunction recalcKeyStatus(lastUserId) {
+  const keyReturnedAreas = [];
+  let keyChanged = false;
 
-    if (!AREAS.includes(newStatus)) {
-        return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
+  for (const area of ['研究室', '実験室']) {
+    const prev = keyStatus[area];
+    const inArea = Object.values(members).filter(m => m.status === area).length;
+    const allOutside = Object.values(members).every(m => m.status === '学外');
+
+    let next = prev;
+    if (inArea > 0) next = '〇';
+    else if (!allOutside) next = '△';
+    else next = '×'; // ここだけallOutsideのときに×にする！
+
+    if (prev !== next) {
+      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
+      keyStatus[area] = next;
+      keyChanged = true;
+
+      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
+        keyReturnedAreas.push(area);
+      }st keyReturnedAreas = [];
+  let keyChanged = false;
+
+  for (const area of ['研究室', '実験室']) {
+    const prev = keyStatus[area];
+    const inArea = Object.values(members).filter(m => m.status === area).length;
+    const allOutside = Object.values(members).every(m => m.status === '学外');
+
+    let next = prev;
+    if (inArea > 0) next = '〇';
+    else if (!allOutside) next = '△';
+    else next = '×'; // ここだけallOutsideのときに×にする！
+
+    if (prev !== next) {
+      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
+      keyStatus[area] = next;
+      keyChanged = true;
+
+      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
+        keyReturnedAreas.push(area);
+      }
     }
+  }
 
-    console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${userId}`);
-
-    try {
-        const profile = await client.getProfile(userId);
-        members[userId] = { name: profile.displayName, status: newStatus };
-        console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
-
-        const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
-
-        const replyMessages = [];
-
-        // ① ステータス更新通知
-        replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
-
-        // ② 返却済み通知
-        if (keyReturnedAreas.length > 0) {
-            replyMessages.push({
-                type: 'text',
-                text: `${keyReturnedAreas.join('・')}の鍵を返してね`,
-            });
-        }
-
-        // ③ もし「鍵を返す？」が必要なら、その確認だけ送る
-        const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-        if (areasToPrompt.length > 0) {
-            replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
-            // ※ここでは鍵の状態は送らない
-        } else {
-            // ④ 返却確認が不要なら鍵の状態を送る
-            replyMessages.push({
-                type: 'text',
-                text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
-            });
-        }
-
-        return client.replyMessage(event.replyToken, replyMessages);
-    } catch (err) {
-        console.error('[ステータス変更エラー]', err);
-        console.error('エラーが発生した userId:', userId);
-        return client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: 'ステータスの更新中にエラーが発生しました。',
-        });
-    }
-}
-
-async function handleReturnKey(event, postbackData) {
-    const userId = event.source.userId;
-
-    let resultText = '';
-    if (postbackData === 'return_yes') {
-        for (const area of ['研究室', '実験室']) {
-            if (keyStatus[area] === '△') {
-                keyStatus[area] = '×';
-                console.log(`[鍵返却] ${area}：△→×`);
-            }
-        }
-        resultText = '鍵の返却：しました';
-    } else {
-        resultText = '鍵の返却：しませんでした';
-    }
-
-    recalcKeyStatus();
-
-    // 返事＋鍵の状態をまとめて送る
-    const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
-    await client.replyMessage(event.replyToken, [
-        { type: 'text', text: resultText },
-        { type: 'text', text: statusText },
-    ]);
-
-    // さらに全員に鍵の状態をブロードキャスト
+  if (keyChanged) {
     broadcastKeyStatus();
-}
+  }
 
+  return { keyReturnedAreas, keyChanged };
+}
+      
 async function handleShowKeyStatus(event) {
     const messagesText = formatKeyStatusText();
     const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
