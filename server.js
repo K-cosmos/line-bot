@@ -34,13 +34,19 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
     }
 }
 
-async function broadcastKeyStatus(text) {
-    const userIds = Object.keys(members);
-    await Promise.all(userIds.map(id => pushMessageWithRetry(id, { type: 'text', text })));
+function broadcastKeyStatus() {
+    const text =
+        `【鍵の状態変更】\n` +
+        `研究室: ${keyStatus['研究室']}\n` +
+        `実験室: ${keyStatus['実験室']}`;
+    for (const userId of Object.keys(members)) {
+        client.pushMessage(userId, { type: 'text', text });
+    }
 }
 
 function recalcKeyStatus(lastUserId) {
     const keyReturnedAreas = [];
+    let keyChanged = false;
 
     for (const area of ['研究室', '実験室']) {
         const prev = keyStatus[area];
@@ -54,16 +60,19 @@ function recalcKeyStatus(lastUserId) {
         if (prev !== next) {
             console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
             keyStatus[area] = next;
+            keyChanged = true;
 
             if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-    keyReturnedAreas.push(area);
-}
+                keyReturnedAreas.push(area);
+            }
         }
     }
-if (keyChanged) {
-    broadcastKeyStatus();
-}
-    return {keyReturnedAreas, keyChanged }; // ← こう返す!; // "研究室" とか "実験室" のリストを返す
+
+    if (keyChanged) {
+        broadcastKeyStatus();
+    }
+
+    return { keyReturnedAreas, keyChanged };
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
@@ -91,7 +100,6 @@ function createKeyReturnConfirmQuickReply(areaList) {
             ],
         },
     };
-}
 }
 
 function formatKeyStatusText() {
@@ -148,11 +156,10 @@ async function handleStatusChange(event, newStatus) {
 
     try {
         const profile = await client.getProfile(userId);
-        const oldStatus = members[userId]?.status;
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
-        const changedAreas = recalcKeyStatus(userId); // ←先に再計算
+        const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
 
         const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
         const replyMessages = [baseTextMsg];
@@ -162,15 +169,14 @@ async function handleStatusChange(event, newStatus) {
             replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
         }
 
-        if (changedAreas.length > 0) {
+        if (keyReturnedAreas.length > 0) {
             replyMessages.push({
                 type: 'text',
-                text: `${changedAreas.join('・')}の鍵、ちゃんと返してね！`,
+                text: `${keyReturnedAreas.join('・')}の鍵、ちゃんと返してね！`,
             });
         }
 
         return client.replyMessage(event.replyToken, replyMessages);
-
     } catch (err) {
         console.error('ステータス変更エラー:', err);
         return client.replyMessage(event.replyToken, {
@@ -178,27 +184,19 @@ async function handleStatusChange(event, newStatus) {
             text: 'ステータス変更中にエラーが発生したよ！',
         });
     }
-    const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
-
-if (keyChanged) {
-    broadcastKeyStatus();
-}
 }
 
 async function handleReturnKey(event, postbackData) {
     const userId = event.source.userId;
-    const currentStatus = members[userId]?.status;
 
     let resultText = '';
     if (postbackData === 'return_yes') {
-        // △→× に変える処理（ユーザーの今のステータスに関係なく）
         for (const area of ['研究室', '実験室']) {
             if (keyStatus[area] === '△') {
                 keyStatus[area] = '×';
                 console.log(`[鍵返却] ${area}：△→×`);
             }
         }
-
         resultText = '鍵の返却：しました';
     } else {
         resultText = '鍵の返却：しませんでした';
@@ -207,7 +205,6 @@ async function handleReturnKey(event, postbackData) {
     recalcKeyStatus();
 
     const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
-
     await client.replyMessage(event.replyToken, [
         { type: 'text', text: resultText },
         { type: 'text', text: statusText },
@@ -244,20 +241,6 @@ async function handleShowAllMembers(event) {
         .join('\n\n') || '全員学外';
 
     return client.replyMessage(event.replyToken, { type: 'text', text });
-}
-
-function broadcastKeyStatus() {
-    const text =
-        `【鍵の状態変更】\n` +
-        `研究室: ${keyStatus['研究室']}\n` +
-        `実験室: ${keyStatus['実験室']}`;
-
-    for (const userId of Object.keys(members)) {
-        client.pushMessage(userId, {
-            type: 'text',
-            text,
-        });
-    }
 }
 
 app.post('/webhook', (req, res) => {
