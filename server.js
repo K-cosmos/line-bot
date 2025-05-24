@@ -153,7 +153,9 @@ async function handleStatusChange(event, newStatus) {
     if (!AREAS.includes(newStatus)) {
         return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
     }
-
+    
+console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${userId}`);
+    
     try {
         const profile = await client.getProfile(userId);
         members[userId] = { name: profile.displayName, status: newStatus };
@@ -178,12 +180,13 @@ async function handleStatusChange(event, newStatus) {
 
         return client.replyMessage(event.replyToken, replyMessages);
     } catch (err) {
-    console.error('ステータス変更エラー:', err);
-    console.log('userId:', userId);
+    console.error('[ステータス変更エラー]', err);
+    console.error('エラーが起きたuserId:', userId);
     return client.replyMessage(event.replyToken, {
         type: 'text',
         text: 'ステータス変更中にエラーが発生したよ！',
     });
+}
     }
 }
 
