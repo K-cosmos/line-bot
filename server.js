@@ -45,30 +45,35 @@ function broadcastKeyStatus() {
 }
 
 function recalcKeyStatus(lastUserId) {
-    const keyReturnedAreas = [];
-    let keyChanged = false;
+  const keyReturnedAreas = [];
+  let keyChanged = false;
 
-    for (const area of ['研究室', '実験室']) {
-        const prev = keyStatus[area];
-        const inArea = Object.values(members).filter(m => m.status === area).length;
-        const allOutside = Object.values(members).every(m => m.status === '学外');
+  for (const area of ['研究室', '実験室']) {
+    const prev = keyStatus[area];
+    const inArea = Object.values(members).filter(m => m.status === area).length;
+    const allOutside = Object.values(members).every(m => m.status === '学外');
 
-        let next = '×';
-        if (inArea > 0) next = '〇';
-        else if (!allOutside && prev !== '×') next = '△';
+    let next = prev;
+    if (inArea > 0) next = '〇';
+    else if (!allOutside) next = '△';
+    else next = '×'; // ここだけallOutsideのときに×にする！
 
-        if (prev !== next) {
-            console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
-            keyStatus[area] = next;
-            keyChanged = true;
+    if (prev !== next) {
+      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
+      keyStatus[area] = next;
+      keyChanged = true;
 
-            if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-                keyReturnedAreas.push(area);
-            }
-        }
+      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
+        keyReturnedAreas.push(area);
+      }
     }
+  }
 
-    return { keyReturnedAreas, keyChanged };
+  if (keyChanged) {
+    broadcastKeyStatus();
+  }
+
+  return { keyReturnedAreas, keyChanged };
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
@@ -147,7 +152,7 @@ async function handleStatusChange(event, newStatus) {
     const userId = event.source.userId;
 
     if (!AREAS.includes(newStatus)) {
-        return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータスです。' });
+        return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
     }
 
     console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${userId}`);
@@ -162,13 +167,13 @@ async function handleStatusChange(event, newStatus) {
         const replyMessages = [];
 
         // ① ステータス更新通知
-        replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新しました。` });
+        replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
 
         // ② 返却済み通知
         if (keyReturnedAreas.length > 0) {
             replyMessages.push({
                 type: 'text',
-                text: `${keyReturnedAreas.join('・')}の鍵は返却されました。`,
+                text: `${keyReturnedAreas.join('・')}の鍵を返してね`,
             });
         }
 
