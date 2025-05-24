@@ -163,7 +163,6 @@ async function handleStatusChange(event) {
 async function handleReturnKey(event) {
     const userId = event.source.userId;
     const data = event.postback.data;
-    const data = event.postback.data;
 
 if (data === 'return_yes') {
     if (members[userId]) members[userId].status = '学外';
