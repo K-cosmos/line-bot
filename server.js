@@ -68,10 +68,6 @@ function recalcKeyStatus(lastUserId) {
         }
     }
 
-    if (keyChanged) {
-        broadcastKeyStatus();
-    }
-
     return { keyReturnedAreas, keyChanged };
 }
 
@@ -151,41 +147,43 @@ async function handleStatusChange(event, newStatus) {
     const userId = event.source.userId;
 
     if (!AREAS.includes(newStatus)) {
-        return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
+        return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータスです。' });
     }
-    
-console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${userId}`);
-    
+
+    console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${userId}`);
+
     try {
         const profile = await client.getProfile(userId);
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
-        const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
+        // 鍵の状態を再計算
+        const { keyReturnedAreas } = recalcKeyStatus(userId);
 
-        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
-        const replyMessages = [baseTextMsg];
+        // メッセージ構築
+        const messageLines = [`ステータスを「${newStatus}」に更新`];
+
+        if (keyReturnedAreas.length > 0) {
+            messageLines.push(`以下の鍵を返却してください：${keyReturnedAreas.join('・')}`);
+        }
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
+        const replyMessages = [
+            { type: 'text', text: messageLines.join('\n') }
+        ];
+
         if (areasToPrompt.length > 0) {
             replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
         }
 
-        if (keyReturnedAreas.length > 0) {
-            replyMessages.push({
-                type: 'text',
-                text: `${keyReturnedAreas.join('・')}の鍵、ちゃんと返してね！`,
-            });
-        }
-
         return client.replyMessage(event.replyToken, replyMessages);
     } catch (err) {
-    console.error('[ステータス変更エラー]', err);
-    console.error('エラーが起きたuserId:', userId);
-    return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: 'ステータス変更中にエラーが発生したよ！',
-    });
+        console.error('[ステータス変更エラー]', err);
+        console.error('エラーが発生した userId:', userId);
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: 'ステータスの更新中にエラーが発生しました。',
+        });
     }
 }
 
