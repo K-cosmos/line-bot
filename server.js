@@ -140,7 +140,7 @@ async function handleStatusChange(event) {
         const profile = await client.getProfile(userId);
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
-
+    }
         recalcKeyStatus();
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
@@ -159,7 +159,6 @@ return client.replyMessage(event.replyToken, [
     }
 }
 
-async function handleReturnKey(event) {
 async function handleReturnKey(event) {
     const userId = event.source.userId;
     const data = event.postback.data;
