@@ -121,25 +121,29 @@ function recalcKeyStatus(lastUserId) {
   let keyChanged = false;
 
   for (const area of ['研究室', '実験室']) {
-    const prev = keyStatus[area];
-    const inArea = Object.values(members).filter(m => m.status === area).length;
-    const allOutside = Object.values(members).every(m => m.status === '学外');
+  const prev = keyStatus[area];
+  const inArea = Object.values(members).filter(m => m.status === area).length;
 
-    let next = prev;
-    if (inArea > 0) next = '〇';
-    else if (!allOutside) next = '△'; // 誰かどこかにいれば△
-    else next = '×';
+  let next = prev;
 
-    if (prev !== next) {
-      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
-      keyStatus[area] = next;
-      keyChanged = true;
+  if (inArea > 0) {
+    next = '〇';
+  } else {
+    // 研究室・実験室はそれぞれ自分の外の判定だけすればいい
+    const everEntered = Object.values(members).some(m => m.status === area || prev === '〇' || prev === '△');
+    next = everEntered ? '△' : '×';
+  }
 
-      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-        keyReturnedAreas.push(area);
-      }
+  if (prev !== next) {
+    console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
+    keyStatus[area] = next;
+    keyChanged = true;
+
+    if (next === '×' && (prev === '△' || prev === '〇') && lastUserId) {
+      keyReturnedAreas.push(area);
     }
   }
+}
 
   if (keyChanged) {
     broadcastKeyStatus();
