@@ -39,7 +39,9 @@ async function broadcastKeyStatus(text) {
     await Promise.all(userIds.map(id => pushMessageWithRetry(id, { type: 'text', text })));
 }
 
-function recalcKeyStatus() {
+function recalcKeyStatus(lastUserId) {
+    const keyReturnedAreas = [];
+
     for (const area of ['研究室', '実験室']) {
         const prev = keyStatus[area];
         const inArea = Object.values(members).filter(m => m.status === area).length;
@@ -52,8 +54,14 @@ function recalcKeyStatus() {
         if (prev !== next) {
             console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
             keyStatus[area] = next;
+
+            if (next === '×' && prev === '△' && allOutside && lastUserId) {
+                keyReturnedAreas.push(area);
+            }
         }
     }
+
+    return keyReturnedAreas; // "研究室" とか "実験室" のリストを返す
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
@@ -150,6 +158,27 @@ async function handleStatusChange(event, newStatus) {
             return client.replyMessage(event.replyToken, baseTextMsg);
         }
 
+        // ステータス変更処理のあと
+const changedAreas = recalcKeyStatus(userId);
+
+const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
+const replyMessages = [baseTextMsg];
+
+// 鍵返却確認が必要なら追加
+const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
+if (areasToPrompt.length > 0) {
+    replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
+}
+
+// もし鍵の返却が必要になったら、注意喚起メッセージを追加
+if (changedAreas.length > 0) {
+    replyMessages.push({
+        type: 'text',
+        text: `⚠️ ${changedAreas.join('・')} の鍵、ちゃんと返却してね！`,
+    });
+}
+
+return client.replyMessage(event.replyToken, replyMessages);
         return client.replyMessage(event.replyToken, [
             baseTextMsg,
             createKeyReturnConfirmQuickReply(areasToPrompt),
