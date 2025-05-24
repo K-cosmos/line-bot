@@ -255,13 +255,23 @@ async function handleShowAllMembers(event) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
+// すでにある部分に追記してね！
+
 app.post('/webhook', (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
         .then(() => res.sendStatus(200))
         .catch(err => {
-            console.error(err);
+            console.error('[Webhook全体のエラー]', err.stack || err);
             res.sendStatus(500);
         });
+});
+
+// Node全体で補足する例外キャッチ
+process.on('unhandledRejection', (reason, p) => {
+    console.error('未処理のPromise例外:', reason.stack || reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('未処理例外:', err.stack || err);
 });
 
 const PORT = process.env.PORT || 3000;
