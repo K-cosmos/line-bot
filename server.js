@@ -13,33 +13,32 @@ const config = {
 };
 const client = new Client(config);
 
-// 状態管理
 const AREAS = ['研究室', '実験室', '学内', '学外'];
-const members = {};  // userId -> { name, status }
+const members = {}; // userId -> { name, status }
 const keyStatus = { '研究室': '×', '実験室': '×' };
 
-// --- ヘルパー関数 ---
-// pushMessageにリトライ機能をつけた関数
+function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
 async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 1500) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             await client.pushMessage(userId, messages);
-            return;  // 成功
+            return;
         } catch (err) {
             console.error(`pushMessage失敗 リトライ残り:${maxRetries - attempt} エラー:`, err.message || err);
-            if (attempt === maxRetries) throw err; // 諦める
-            await new Promise(r => setTimeout(r, delayMs));
+            if (attempt === maxRetries) throw err;
+            await delay(delayMs);
         }
     }
 }
 
-// 全員に鍵状況を送信する（broadcast）
 async function broadcastKeyStatus(text) {
     const userIds = Object.keys(members);
     await Promise.all(userIds.map(id => pushMessageWithRetry(id, { type: 'text', text })));
 }
 
-// 鍵状態をメンバー状況から再計算し、変化があれば更新する
 function recalcKeyStatus() {
     for (const area of ['研究室', '実験室']) {
         const prev = keyStatus[area];
@@ -57,24 +56,6 @@ function recalcKeyStatus() {
     }
 }
 
-// ステータス選択ボタンを返す（reply用）
-function createStatusButtons() {
-    return {
-        type: 'template',
-        altText: 'ステータスを選択：',
-        template: {
-            type: 'buttons',
-            text: 'ステータスを選択',
-            actions: AREAS.map(area => ({
-                type: 'postback',
-                label: area,
-                data: area,
-            })),
-        },
-    };
-}
-
-// 鍵返却確認メッセージを作る
 function createKeyReturnConfirm(areasToPrompt) {
     if (areasToPrompt.length === 1) {
         const area = areasToPrompt[0];
@@ -85,13 +66,12 @@ function createKeyReturnConfirm(areasToPrompt) {
                 type: 'confirm',
                 text: `${area}の鍵を返しますか？`,
                 actions: [
-                    { type: 'postback', label: 'はい', data: `return_yes_${area}` },
-                    { type: 'postback', label: 'いいえ', data: `return_no_${area}` },
+                    { type: 'postback', label: 'はい', data: 'return_yes_研究室' },
+                    { type: 'postback', label: 'いいえ', data: 'return_no_研究室' },
                 ],
             },
         };
     }
-    // 複数ならボタン形式で選択肢
     return {
         type: 'template',
         altText: '鍵を返しますか？',
@@ -100,37 +80,40 @@ function createKeyReturnConfirm(areasToPrompt) {
             text: 'どの鍵を返しますか？',
             actions: [
                 { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
-                { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
-                { type: 'postback', label: '両方', data: 'return_yes_両方' },
-                { type: 'postback', label: '両方返さない', data: 'return_no_両方' },
+                { type: 'postback', label: '実験室', data: 'return_yes_研究室' },
+                { type: 'postback', label: '両方', data: 'return_yes_研究室' },
+                { type: 'postback', label: '返さない', data: 'return_no_研究室' },
             ],
         },
     };
 }
 
-// 鍵状態メッセージをテキストで作成
 function formatKeyStatusText() {
     return ['研究室', '実験室'].map(area => `${area}：${keyStatus[area]}`).join('\n');
 }
 
-// --- イベント処理 ---
-
-// メインイベントハンドラー
 async function handleEvent(event) {
-    if (event.type !== 'postback') return null;
+    if (event.type === 'postback') {
+        const data = event.postback.data;
 
-    const data = event.postback.data;
+        if (data.startsWith('return_yes_') || data.startsWith('return_no_')) {
+            return handleReturnKey(event);
+        }
 
-    if (data === 'open_status_menu') return client.replyMessage(event.replyToken, createStatusButtons());
-    if (data === 'show_key_status') return handleShowKeyStatus(event);
-    if (data === 'show_all_members') return handleShowAllMembers(event);
-    if (data.startsWith('return_')) return handleReturnKey(event);
+        if (AREAS.includes(data)) {
+            return handleStatusChange(event);
+        }
 
-    // それ以外はステータス変更
-    return handleStatusChange(event);
+        if (data === 'show_key_status') {
+            return handleShowKeyStatus(event);
+        }
+
+        if (data === 'show_all_members') {
+            return handleShowAllMembers(event);
+        }
+    }
 }
 
-// ステータス変更処理
 async function handleStatusChange(event) {
     const userId = event.source.userId;
     const newStatus = event.postback.data;
@@ -146,13 +129,9 @@ async function handleStatusChange(event) {
 
         recalcKeyStatus();
 
-        // △(あいまい)の鍵があれば返却確認メッセージも作るよ
-        const areasToPrompt = [];
-        ['研究室', '実験室'].forEach(area => {
-            if (keyStatus[area] === '△') areasToPrompt.push(area);
-        });
-
+        const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
         const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
+
         if (areasToPrompt.length === 0) {
             return client.replyMessage(event.replyToken, baseTextMsg);
         }
@@ -166,18 +145,13 @@ async function handleStatusChange(event) {
     }
 }
 
-// 鍵返却処理
 async function handleReturnKey(event) {
     const userId = event.source.userId;
-    const [_, response, area] = event.postback.data.split('_');
+    const data = event.postback.data;
+    const response = data.includes('yes') ? 'yes' : 'no';
 
     if (response === 'yes') {
-        if (area === '両方') {
-            // 両方の鍵返却なら、両エリアとも学外に
-            if (members[userId]) members[userId].status = '学外';
-        } else {
-            if (members[userId]) members[userId].status = '学外';
-        }
+        if (members[userId]) members[userId].status = '学外';
     }
 
     recalcKeyStatus();
@@ -191,7 +165,6 @@ async function handleReturnKey(event) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
-// 鍵状況表示処理
 async function handleShowKeyStatus(event) {
     const messagesText = formatKeyStatusText();
     const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
@@ -200,33 +173,12 @@ async function handleShowKeyStatus(event) {
         return client.replyMessage(event.replyToken, { type: 'text', text: `🔐 鍵の状態\n${messagesText}` });
     }
 
-    if (areasToPrompt.length === 1) {
-        return client.replyMessage(event.replyToken, [
-            { type: 'text', text: `🔐 鍵の状態\n${messagesText}` },
-            createKeyReturnConfirm(areasToPrompt),
-        ]);
-    }
-
-    // 複数△
     return client.replyMessage(event.replyToken, [
         { type: 'text', text: `🔐 鍵の状態\n${messagesText}` },
-        {
-            type: 'template',
-            altText: '鍵を返しますか？',
-            template: {
-                type: 'buttons',
-                text: 'どの鍵を返しますか？',
-                actions: [
-                    { type: 'postback', label: '研究室', data: 'return_yes_研究室' },
-                    { type: 'postback', label: '実験室', data: 'return_yes_実験室' },
-                    { type: 'postback', label: '両方', data: 'return_yes_両方' },
-                ],
-            },
-        },
+        createKeyReturnConfirm(areasToPrompt),
     ]);
 }
 
-// 全メンバー表示処理
 async function handleShowAllMembers(event) {
     const statusGroups = {};
     Object.values(members).forEach(({ name, status }) => {
@@ -243,7 +195,6 @@ async function handleShowAllMembers(event) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
-// Webhookエンドポイント
 app.post('/webhook', (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
         .then(() => res.sendStatus(200))
@@ -253,7 +204,6 @@ app.post('/webhook', (req, res) => {
         });
 });
 
-// サーバ起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`サーバーがポート${PORT}で起動したよ`);
