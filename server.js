@@ -95,23 +95,37 @@ function formatKeyStatusText() {
 async function handleEvent(event) {
     console.log('ポストバック受信:', event.postback.data);
     if (event.type === 'postback') {
-        const data = event.postback.data;
+        const data = event.postback.data
+       if (data === 'show_key_status') {
+          return handleKeyStatus(event);
+       }
 
-        if (data.startsWith('return_yes_') || data.startsWith('return_no_')) {
-            return handleReturnKey(event);
-        }
+    if (data === 'show_all_members') {
+        return handleShowAllMembers(event);
+    }
 
-        if (AREAS.includes(data)) {
-            return handleStatusChange(event);
-        }
+    if (data === 'open_status_menu') {
+        const quickReply = {
+            items: AREAS.map(area => ({
+                type: 'action',
+                action: {
+                     type: 'postback',
+                     label: area,
+                     data: area,
+               },
+        })),
+    };
 
-        if (data === 'show_key_status') {
-            return handleShowKeyStatus(event);
-        }
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: 'ステータスを選択',
+        quickReply: quickReply,
+    });
+}
 
-        if (data === 'show_all_members') {
-            return handleShowAllMembers(event);
-        }
+if (AREAS.includes(data)) {
+    return handleStatusChange(event);
+}
     }
 }
 
