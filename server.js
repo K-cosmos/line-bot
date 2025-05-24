@@ -93,6 +93,7 @@ function formatKeyStatusText() {
 }
 
 async function handleEvent(event) {
+    console.log('ポストバック受信:', event.postback.data);
     if (event.type === 'postback') {
         const data = event.postback.data;
 
