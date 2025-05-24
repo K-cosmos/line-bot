@@ -94,11 +94,6 @@ function createKeyReturnConfirmQuickReply(areaList) {
             ],
         },
     };
-   const changedAreas = recalcKeyStatus(userId);
-
-if (changedAreas.length > 0) {
-    broadcastKeyStatus();  // 鍵状況が変わったら通知
-} 
 }
 
 function formatKeyStatusText() {
