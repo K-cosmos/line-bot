@@ -63,7 +63,8 @@ function recalcKeyStatus(lastUserId) {
 if (keyChanged) {
     broadcastKeyStatus();
 }
-    return keyReturnedAreas; // "研究室" とか "実験室" のリストを返す
+    return {keyReturnedAreas, 
+            key Changed }; // ← こう返す!; // "研究室" とか "実験室" のリストを返す
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
@@ -91,8 +92,6 @@ function createKeyReturnConfirmQuickReply(areaList) {
             ],
         },
     };
-    if (keyChanged) {
-    broadcastKeyStatus();
 }
 }
 
@@ -180,6 +179,11 @@ async function handleStatusChange(event, newStatus) {
             text: 'ステータス変更中にエラーが発生したよ！',
         });
     }
+    const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
+
+if (keyChanged) {
+    broadcastKeyStatus();
+}
 }
 
 async function handleReturnKey(event, postbackData) {
