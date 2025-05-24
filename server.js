@@ -178,11 +178,12 @@ async function handleStatusChange(event, newStatus) {
 
         return client.replyMessage(event.replyToken, replyMessages);
     } catch (err) {
-        console.error('ステータス変更エラー:', err);
-        return client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: 'ステータス変更中にエラーが発生したよ！',
-        });
+    console.error('ステータス変更エラー:', err);
+    console.log('userId:', userId);
+    return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: 'ステータス変更中にエラーが発生したよ！',
+    });
     }
 }
 
