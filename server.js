@@ -161,7 +161,7 @@ async function handleStatusChange(event, newStatus) {
     console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
     const prevKeyStatus = { ...keyStatus };
-    const keyChanged = recalcKeyStatus();
+    const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
 
     const replyMessages = [];
 
