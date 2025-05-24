@@ -149,43 +149,31 @@ async function handleStatusChange(event, newStatus) {
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
-        recalcKeyStatus();
+        const changedAreas = recalcKeyStatus(userId); // ←先に再計算
+
+        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
+        const replyMessages = [baseTextMsg];
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
-
-        if (areasToPrompt.length === 0) {
-            return client.replyMessage(event.replyToken, baseTextMsg);
+        if (areasToPrompt.length > 0) {
+            replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
         }
 
-        // ステータス変更処理のあと
-const changedAreas = recalcKeyStatus(userId);
+        if (changedAreas.length > 0) {
+            replyMessages.push({
+                type: 'text',
+                text: `⚠️ ${changedAreas.join('・')} の鍵、ちゃんと返却してね！`,
+            });
+        }
 
-const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
-const replyMessages = [baseTextMsg];
+        return client.replyMessage(event.replyToken, replyMessages);
 
-// 鍵返却確認が必要なら追加
-const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-if (areasToPrompt.length > 0) {
-    replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
-}
-
-// もし鍵の返却が必要になったら、注意喚起メッセージを追加
-if (changedAreas.length > 0) {
-    replyMessages.push({
-        type: 'text',
-        text: `⚠️ ${changedAreas.join('・')} の鍵、ちゃんと返却してね！`,
-    });
-}
-
-return client.replyMessage(event.replyToken, replyMessages);
-        return client.replyMessage(event.replyToken, [
-            baseTextMsg,
-            createKeyReturnConfirmQuickReply(areasToPrompt),
-        ]);
     } catch (err) {
-        console.error('handleStatusChange error:', err);
-        return client.replyMessage(event.replyToken, { type: 'text', text: 'ステータス更新中にエラーが発生したよ' });
+        console.error('ステータス変更エラー:', err);
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: 'ステータス変更中にエラーが発生したよ！',
+        });
     }
 }
 
