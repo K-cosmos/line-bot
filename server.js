@@ -63,8 +63,7 @@ function recalcKeyStatus(lastUserId) {
 if (keyChanged) {
     broadcastKeyStatus();
 }
-    return {keyReturnedAreas, 
-            key Changed }; // ← こう返す!; // "研究室" とか "実験室" のリストを返す
+    return {keyReturnedAreas, keyChanged }; // ← こう返す!; // "研究室" とか "実験室" のリストを返す
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
