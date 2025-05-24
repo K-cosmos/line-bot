@@ -140,22 +140,23 @@ async function handleStatusChange(event) {
         const profile = await client.getProfile(userId);
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
-    }
+
         recalcKeyStatus();
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
         const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
 
         if (areasToPrompt.length === 0) {
-    return client.replyMessage(event.replyToken, baseTextMsg);
-}
+            return client.replyMessage(event.replyToken, baseTextMsg);
+        }
 
-return client.replyMessage(event.replyToken, [
-    baseTextMsg,
-    createKeyReturnConfirmQuickReply(areasToPrompt),
-]);
+        return client.replyMessage(event.replyToken, [
+            baseTextMsg,
+            createKeyReturnConfirmQuickReply(areasToPrompt),
+        ]);
     } catch (err) {
         console.error('handleStatusChange error:', err);
+        return client.replyMessage(event.replyToken, { type: 'text', text: 'ステータス更新中にエラーが発生したよ' });
     }
 }
 
