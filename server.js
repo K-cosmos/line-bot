@@ -162,16 +162,15 @@ async function handleStatusChange(event, newStatus) {
 
 async function handleReturnKey(event, postbackData) {
     const userId = event.source.userId;
-    const prevStatus = members[userId]?.status;
+    const currentStatus = members[userId]?.status;
 
     let resultText = '';
     if (postbackData === 'return_yes') {
-        if (members[userId]) members[userId].status = '学外';
-
-        // △→× に変える処理
+        // △→× に変える処理（ユーザーの今のステータスに関係なく）
         for (const area of ['研究室', '実験室']) {
-            if (keyStatus[area] === '△' && prevStatus === area) {
+            if (keyStatus[area] === '△') {
                 keyStatus[area] = '×';
+                console.log(`[鍵返却] ${area}：△→×`);
             }
         }
 
