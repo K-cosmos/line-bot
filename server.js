@@ -116,28 +116,24 @@ async function handleEvent(event) {
     }
 }
 
-function recalcKeyStatus(lastUserId) {
-  const keyReturnedAreas = [];
+function recalcKeyStatus() {
   let keyChanged = false;
 
   for (const area of ['研究室', '実験室']) {
     const prev = keyStatus[area];
     const inArea = Object.values(members).filter(m => m.status === area).length;
-    const allOutside = Object.values(members).every(m => m.status === '学外');
 
     let next = prev;
-    if (inArea > 0) next = '〇';
-    else if (!allOutside) next = '△';
-    else next = '×'; // ここだけallOutsideのときに×にする！
+    if (inArea > 0) {
+      next = '〇';
+    } else if (prev !== '×') {
+      next = '△'; // 鍵は勝手に×にしない！
+    }
 
     if (prev !== next) {
       console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
       keyStatus[area] = next;
       keyChanged = true;
-
-      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-        keyReturnedAreas.push(area);
-      }
     }
   }
 
@@ -145,7 +141,84 @@ function recalcKeyStatus(lastUserId) {
     broadcastKeyStatus();
   }
 
-  return { keyReturnedAreas, keyChanged };
+  return keyChanged;
+}
+
+async function handleStatusChange(event, newStatus) {
+  const userId = event.source.userId;
+
+  if (!AREAS.includes(newStatus)) {
+    return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
+  }
+
+  try {
+    const profile = await client.getProfile(userId);
+    members[userId] = { name: profile.displayName, status: newStatus };
+    console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
+
+    const prevKeyStatus = { ...keyStatus };
+    const keyChanged = recalcKeyStatus();
+
+    const replyMessages = [];
+
+    // ① ステータス更新通知
+    replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
+
+    // ② 鍵が△になったところを返却確認で聞く
+    const areasToPrompt = ['研究室', '実験室'].filter(area =>
+      keyStatus[area] === '△' && prevKeyStatus[area] !== '△'
+    );
+
+    if (areasToPrompt.length > 0) {
+      replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
+      // 返却確認中は鍵の状態は送らない
+    } else {
+      // ③ 鍵返却確認不要なら鍵の状態を送る
+      replyMessages.push({
+        type: 'text',
+        text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+      });
+    }
+
+    return client.replyMessage(event.replyToken, replyMessages);
+  } catch (err) {
+    console.error('[ステータス変更エラー]', err);
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'ステータスの更新中にエラーが発生しました。',
+    });
+  }
+}
+
+async function handleReturnKey(event, postbackData) {
+  const userId = event.source.userId;
+  let resultText = '';
+
+  if (postbackData === 'return_yes') {
+    // ユーザーが「はい」と答えたときだけ×にする
+    for (const area of ['研究室', '実験室']) {
+      if (keyStatus[area] === '△') {
+        keyStatus[area] = '×';
+        console.log(`[鍵返却] ${area}：△→× by ${userId}`);
+      }
+    }
+    resultText = '鍵の返却：しました';
+  } else {
+    resultText = '鍵の返却：しませんでした';
+  }
+
+  // 鍵状態の再計算（×にはしないので必要ないが念のため）
+  recalcKeyStatus();
+
+  // 返事＋鍵の状態をまとめて送る
+  const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
+  await client.replyMessage(event.replyToken, [
+    { type: 'text', text: resultText },
+    { type: 'text', text: statusText },
+  ]);
+
+  // 全員に最新の鍵状態を送信
+  broadcastKeyStatus();
 }
       
 async function handleShowKeyStatus(event) {
