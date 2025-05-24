@@ -159,7 +159,6 @@ async function handleStatusChange(event, newStatus) {
 
         const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
 
-        // 返信メッセージ
         const replyMessages = [];
 
         // ① ステータス更新通知
@@ -169,24 +168,21 @@ async function handleStatusChange(event, newStatus) {
         if (keyReturnedAreas.length > 0) {
             replyMessages.push({
                 type: 'text',
-                text: `${keyReturnedAreas.join('・')}の鍵を返してね`,
+                text: `${keyReturnedAreas.join('・')}の鍵は返却されました。`,
             });
         }
 
-        // ③ 鍵の状態（常に送る）
-        replyMessages.push({
-            type: 'text',
-            text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
-        });
-
-        // ④ 「鍵を返す？」クイックリプライ
+        // ③ もし「鍵を返す？」が必要なら、その確認だけ送る
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
         if (areasToPrompt.length > 0) {
             replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
+            // ※ここでは鍵の状態は送らない
+        } else {
+            // ④ 返却確認が不要なら鍵の状態を送る
             replyMessages.push({
-            type: 'text',
-            text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
-        });
+                type: 'text',
+                text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+            });
         }
 
         return client.replyMessage(event.replyToken, replyMessages);
@@ -218,13 +214,15 @@ async function handleReturnKey(event, postbackData) {
 
     recalcKeyStatus();
 
+    // 返事＋鍵の状態をまとめて送る
     const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
     await client.replyMessage(event.replyToken, [
         { type: 'text', text: resultText },
         { type: 'text', text: statusText },
     ]);
 
-    await broadcastKeyStatus(`${resultText}\n${statusText}`);
+    // さらに全員に鍵の状態をブロードキャスト
+    broadcastKeyStatus();
 }
 
 async function handleShowKeyStatus(event) {
