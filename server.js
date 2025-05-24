@@ -59,7 +59,7 @@ function recalcKeyStatus() {
 function createKeyReturnConfirmQuickReply(areaList) {
     return {
         type: 'text',
-        text: `${areaList.join('、')}の鍵を返却しますか？`,
+        text: `${areaList.join('、')}の鍵を返す？`,
         quickReply: {
             items: [
                 {
@@ -144,7 +144,7 @@ async function handleStatusChange(event, newStatus) {
         recalcKeyStatus();
 
         const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新したよ` };
+        const baseTextMsg = { type: 'text', text: `ステータスを「${newStatus}」に更新` };
 
         if (areasToPrompt.length === 0) {
             return client.replyMessage(event.replyToken, baseTextMsg);
