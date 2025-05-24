@@ -58,14 +58,11 @@ function recalcKeyStatus(lastUserId) {
             if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
     keyReturnedAreas.push(area);
 }
-            const changedAreas = recalcKeyStatus(userId);  // ← ここでもう鍵の変化はわかってる
-
-if (changedAreas.length > 0) {
-    broadcastKeyStatus();  // ← この関数を追加して全員に通知
-}
         }
     }
-
+if (keyChanged) {
+    broadcastKeyStatus();
+}
     return keyReturnedAreas; // "研究室" とか "実験室" のリストを返す
 }
 
@@ -94,6 +91,9 @@ function createKeyReturnConfirmQuickReply(areaList) {
             ],
         },
     };
+    if (keyChanged) {
+    broadcastKeyStatus();
+}
 }
 
 function formatKeyStatusText() {
