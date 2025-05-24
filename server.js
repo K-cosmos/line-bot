@@ -186,7 +186,6 @@ console.log(`[handleStatusChange] 新ステータス: ${newStatus}, userId: ${us
         type: 'text',
         text: 'ステータス変更中にエラーが発生したよ！',
     });
-}
     }
 }
 
