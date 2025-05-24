@@ -157,23 +157,36 @@ async function handleStatusChange(event, newStatus) {
         members[userId] = { name: profile.displayName, status: newStatus };
         console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
-        // 鍵の状態を再計算
-        const { keyReturnedAreas } = recalcKeyStatus(userId);
+        const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
 
-        // メッセージ構築
-        const messageLines = [`ステータスを「${newStatus}」に更新`];
+        // 返信メッセージ
+        const replyMessages = [];
 
+        // ① ステータス更新通知
+        replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新しました。` });
+
+        // ② 返却済み通知
         if (keyReturnedAreas.length > 0) {
-            messageLines.push(`以下の鍵を返却してください：${keyReturnedAreas.join('・')}`);
+            replyMessages.push({
+                type: 'text',
+                text: `${keyReturnedAreas.join('・')}の鍵を返してね`,
+            });
         }
 
-        const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-        const replyMessages = [
-            { type: 'text', text: messageLines.join('\n') }
-        ];
+        // ③ 鍵の状態（常に送る）
+        replyMessages.push({
+            type: 'text',
+            text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+        });
 
+        // ④ 「鍵を返す？」クイックリプライ
+        const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
         if (areasToPrompt.length > 0) {
             replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
+            replyMessages.push({
+            type: 'text',
+            text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+        });
         }
 
         return client.replyMessage(event.replyToken, replyMessages);
