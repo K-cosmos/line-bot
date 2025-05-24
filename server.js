@@ -58,6 +58,11 @@ function recalcKeyStatus(lastUserId) {
             if (next === '×' && prev !== '×' && allOutside && lastUserId) {
     keyReturnedAreas.push(area);
 }
+            const changedAreas = recalcKeyStatus(userId);  // ← ここでもう鍵の変化はわかってる
+
+if (changedAreas.length > 0) {
+    broadcastKeyStatus();  // ← この関数を追加して全員に通知
+}
         }
     }
 
@@ -89,6 +94,11 @@ function createKeyReturnConfirmQuickReply(areaList) {
             ],
         },
     };
+   const changedAreas = recalcKeyStatus(userId);
+
+if (changedAreas.length > 0) {
+    broadcastKeyStatus();  // 鍵状況が変わったら通知
+} 
 }
 
 function formatKeyStatusText() {
@@ -236,6 +246,20 @@ async function handleShowAllMembers(event) {
         .join('\n\n') || '全員学外';
 
     return client.replyMessage(event.replyToken, { type: 'text', text });
+}
+
+function broadcastKeyStatus() {
+    const text =
+        `【鍵の状態変更】\n` +
+        `研究室: ${keyStatus['研究室']}\n` +
+        `実験室: ${keyStatus['実験室']}`;
+
+    for (const userId of Object.keys(members)) {
+        client.pushMessage(userId, {
+            type: 'text',
+            text,
+        });
+    }
 }
 
 app.post('/webhook', (req, res) => {
