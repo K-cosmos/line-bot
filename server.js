@@ -163,11 +163,14 @@ async function handleStatusChange(event) {
 async function handleReturnKey(event) {
     const userId = event.source.userId;
     const data = event.postback.data;
-    const response = data === 'return_yes' ? 'yes' : 'no';
+    const data = event.postback.data;
 
-    if (response === 'yes') {
-        if (members[userId]) members[userId].status = '学外';
-    }
+if (data === 'return_yes') {
+    if (members[userId]) members[userId].status = '学外';
+    // 鍵返却処理あり
+} else if (data === 'return_no') {
+    // 鍵返却処理なし
+}
 
     recalcKeyStatus();
 
