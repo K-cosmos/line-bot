@@ -117,28 +117,7 @@ async function handleEvent(event) {
 }
 
 function recalcKeyStatus(lastUserId) {
-  confunction recalcKeyStatus(lastUserId) {
   const keyReturnedAreas = [];
-  let keyChanged = false;
-
-  for (const area of ['研究室', '実験室']) {
-    const prev = keyStatus[area];
-    const inArea = Object.values(members).filter(m => m.status === area).length;
-    const allOutside = Object.values(members).every(m => m.status === '学外');
-
-    let next = prev;
-    if (inArea > 0) next = '〇';
-    else if (!allOutside) next = '△';
-    else next = '×'; // ここだけallOutsideのときに×にする！
-
-    if (prev !== next) {
-      console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
-      keyStatus[area] = next;
-      keyChanged = true;
-
-      if (next === '×' && (prev === '△' || prev === '〇') && allOutside && lastUserId) {
-        keyReturnedAreas.push(area);
-      }st keyReturnedAreas = [];
   let keyChanged = false;
 
   for (const area of ['研究室', '実験室']) {
