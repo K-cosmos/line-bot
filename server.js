@@ -14,7 +14,7 @@ const config = {
 const client = new Client(config);
 
 const AREAS = ['研究室', '実験室', '学内', '学外'];
-const members = {}; // userId -> { name, status }
+const members = {};
 const keyStatus = { '研究室': '×', '実験室': '×' };
 
 function delay(ms) {
@@ -34,27 +34,38 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
   }
 }
 
-function createKeyReturnConfirmQuickReply(areaList) {
+function formatKeyStatusText() {
+  return ['研究室', '実験室'].map(area => `${area}：${keyStatus[area]}`).join('\n');
+}
+
+function createYesNoQuickReply(area) {
   return {
     type: 'text',
-    text: `${areaList.join('、')}の鍵を返す？`,
+    text: `${area}の鍵を返す？`,
     quickReply: {
       items: [
-        {
-          type: 'action',
-          action: { type: 'postback', label: 'はい', data: 'return_yes' },
-        },
-        {
-          type: 'action',
-          action: { type: 'postback', label: 'いいえ', data: 'return_no' },
-        },
+        { type: 'action', action: { type: 'postback', label: 'はい', data: `return_${area}` } },
+        { type: 'action', action: { type: 'postback', label: 'いいえ', data: 'return_なし' } },
       ],
     },
   };
 }
 
-function formatKeyStatusText() {
-  return ['研究室', '実験室'].map(area => `${area}：${keyStatus[area]}`).join('\n');
+function createMultiKeyReturnTemplate() {
+  return {
+    type: 'template',
+    altText: 'どの鍵を返しますか？',
+    template: {
+      type: 'buttons',
+      text: 'どの鍵を返しますか？',
+      actions: [
+        { type: 'postback', label: '研究室', data: 'return_研究室' },
+        { type: 'postback', label: '実験室', data: 'return_実験室' },
+        { type: 'postback', label: '両方', data: 'return_両方' },
+        { type: 'postback', label: '返さない', data: 'return_なし' },
+      ],
+    },
+  };
 }
 
 async function handleEvent(event) {
@@ -85,10 +96,9 @@ async function handleEvent(event) {
   }
 
   if (data.startsWith('return_')) {
-  // 'return_研究室'とか'両方'とか'なし'がここでキャッチされるよ！
-  const area = data.replace('return_', '');
-  return handleReturnKey(event, area);
-}
+    const area = data.replace('return_', '');
+    return handleReturnKey(event, area);
+  }
 
   if (AREAS.includes(data)) {
     return handleStatusChangeFlow(event, data);
@@ -98,7 +108,7 @@ async function handleEvent(event) {
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
   const profile = await client.getProfile(userId);
-  const isFirstUpdate = !members[userId]; // 初めてのステータス更新かチェック
+  const isFirstUpdate = !members[userId];
 
   members[userId] = { name: profile.displayName, status: newStatus };
 
@@ -106,7 +116,6 @@ async function handleStatusChangeFlow(event, newStatus) {
   recalcKeyStatus();
 
   if (isFirstUpdate) {
-    // 1回目は「ステータスを更新」だけ返す
     await client.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ステータスを更新',
@@ -114,65 +123,55 @@ async function handleStatusChangeFlow(event, newStatus) {
     return;
   }
 
-  // △があれば返却確認
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-  if (areasToPrompt.length > 0) {
+
+  if (areasToPrompt.length === 1) {
+    // 1つだけ△ → その鍵だけ確認
     await client.replyMessage(event.replyToken, [
       { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-      createKeyReturnConfirmQuickReply(areasToPrompt),
+      createYesNoQuickReply(areasToPrompt[0]),
     ]);
     return;
   }
 
-  // △がない → 直接鍵状況更新送信
+  if (areasToPrompt.length === 2) {
+    // 両方△ → どれを返すか4択
+    await client.replyMessage(event.replyToken, [
+      { type: 'text', text: `ステータスを「${newStatus}」に更新` },
+      createMultiKeyReturnTemplate(),
+    ]);
+    return;
+  }
+
+  // △なし → 直接鍵の状況送信
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
-// ステータス更新後に呼び出す関数
-async function promptKeyReturn(event, areasToPrompt) {
-  await client.replyMessage(event.replyToken, {
-    type: 'template',
-    altText: 'どの鍵を返しますか？',
-    template: {
-      type: 'buttons',
-      text: 'どの鍵を返しますか？',
-      actions: [
-        { type: 'postback', label: '研究室', data: 'return_研究室' },
-        { type: 'postback', label: '実験室', data: 'return_実験室' },
-        { type: 'postback', label: '両方', data: 'return_両方' },
-        { type: 'postback', label: '返さない', data: 'return_なし' },
-      ],
-    },
-  });
-}
-
-// 返却選択後の処理
-async function handleReturnKey(event, data) {
+async function handleReturnKey(event, area) {
   const userId = event.source.userId;
   let messages = [];
 
-  if (data === 'なし') {
-    // 返さない
+  if (area === 'なし') {
     messages.push({ type: 'text', text: 'わかった！' });
   } else {
-    // 研究室・実験室・両方のとき
-    if (data === '研究室' || data === '両方') {
+    if (area === '研究室' || area === '両方') {
       keyStatus['研究室'] = '×';
       messages.push({ type: 'text', text: '研究室の鍵よろしくね！' });
     }
-    if (data === '実験室' || data === '両方') {
+    if (area === '実験室' || area === '両方') {
       keyStatus['実験室'] = '×';
       messages.push({ type: 'text', text: '実験室の鍵よろしくね！' });
     }
 
-    // 鍵の状態を表示するメッセージ
-    const keyMessage = `🔐 鍵の状態\n研究室: ${keyStatus['研究室']}\n実験室: ${keyStatus['実験室']}`;
-    messages.push({ type: 'text', text: keyMessage });
+    messages.push({
+      type: 'text',
+      text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+    });
   }
 
   await client.replyMessage(event.replyToken, messages);
 }
-  
+
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
   const keyChanged = prevKeyStatus
     ? ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area])
@@ -236,13 +235,22 @@ function recalcKeyStatus() {
 async function handleShowKeyStatus(event) {
   const text = `🔐 鍵の状態\n${formatKeyStatusText()}`;
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
+
   if (areasToPrompt.length === 0) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
   }
-  return client.replyMessage(event.replyToken, [
-    { type: 'text', text },
-    createKeyReturnConfirmQuickReply(areasToPrompt),
-  ]);
+  if (areasToPrompt.length === 1) {
+    return client.replyMessage(event.replyToken, [
+      { type: 'text', text },
+      createYesNoQuickReply(areasToPrompt[0]),
+    ]);
+  }
+  if (areasToPrompt.length === 2) {
+    return client.replyMessage(event.replyToken, [
+      { type: 'text', text },
+      createMultiKeyReturnTemplate(),
+    ]);
+  }
 }
 
 async function handleShowAllMembers(event) {
