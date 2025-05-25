@@ -95,34 +95,54 @@ async function handleEvent(event) {
 
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
-  const profile = await client.getProfile(userId);
 
-  // 初期ステータスを学外に設定する（もしまだ登録されてなければ）
+  // 1回目だけLINEプロフィール取得が必要だから、ここで判定
+  let isFirstTime = false;
   if (!members[userId]) {
+    isFirstTime = true;
+    const profile = await client.getProfile(userId);
     members[userId] = { name: profile.displayName, status: '学外' };
   }
 
-  // 新しいステータスに更新
+  // ステータス更新
   members[userId].status = newStatus;
 
-  // ステータス更新後の鍵状況計算
+  if (isFirstTime) {
+    // 1回目だけ「ステータス更新中…」って返信しておく
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'ステータス更新中…ちょっと待ってね！',
+    });
+  }
+
+  // 鍵状況更新
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
-  // △があれば返却確認
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
   if (areasToPrompt.length > 0) {
-    await client.replyMessage(event.replyToken, [
+    const messages = [
       { type: 'text', text: `ステータスを「${newStatus}」に更新` },
       createKeyReturnConfirmQuickReply(areasToPrompt),
-    ]);
-    // 返却確認の返事を待つためここで終わる
-    return;
-  }
+    ];
 
-  // △がない → 直接鍵状況更新送信
-  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
+    if (isFirstTime) {
+      // 1回目は上でreplyMessageしたからpushで送る
+      await pushMessageWithRetry(userId, messages);
+    } else {
+      // 2回目以降はreplyTokenでそのまま返せる
+      await client.replyMessage(event.replyToken, messages);
+    }
+  } else {
+    // △なしならそのまま送る
+    if (isFirstTime) {
+      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, null);
+    } else {
+      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken);
+    }
+  }
 }
+
 async function handleReturnKey(event, answer) {
   const userId = event.source.userId;
   let resultText = '';
