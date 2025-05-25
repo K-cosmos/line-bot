@@ -95,48 +95,35 @@ async function handleEvent(event) {
 
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
+  const profile = await client.getProfile(userId);
+  const isFirstUpdate = !members[userId]; // 初めてのステータス更新かチェック
 
-  let isFirstTime = false;
-  if (!members[userId]) {
-    isFirstTime = true;
-    const profile = await client.getProfile(userId);
-    members[userId] = { name: profile.displayName, status: '学外' };
-  }
-
-  members[userId].status = newStatus;
+  members[userId] = { name: profile.displayName, status: newStatus };
 
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
-  const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-
-  if (isFirstTime) {
-    // 1回目はステータス更新中をreplyMessageで返して
+  if (isFirstUpdate) {
+    // 1回目は「ステータスを更新」だけ返す
     await client.replyMessage(event.replyToken, {
       type: 'text',
-      text: 'ステータス更新中…ちょっと待ってね！',
+      text: 'ステータスを更新',
     });
-
-    // その後にpushMessageで本更新メッセージを送る
-    if (areasToPrompt.length > 0) {
-      await pushMessageWithRetry(userId, [
-        { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-        createKeyReturnConfirmQuickReply(areasToPrompt),
-      ]);
-    } else {
-      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
-    }
-  } else {
-    // 2回目以降はそのままreplyMessageで返す
-    if (areasToPrompt.length > 0) {
-      await client.replyMessage(event.replyToken, [
-        { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-        createKeyReturnConfirmQuickReply(areasToPrompt),
-      ]);
-    } else {
-      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken);
-    }
+    return;
   }
+
+  // △があれば返却確認
+  const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
+  if (areasToPrompt.length > 0) {
+    await client.replyMessage(event.replyToken, [
+      { type: 'text', text: `ステータスを「${newStatus}」に更新` },
+      createKeyReturnConfirmQuickReply(areasToPrompt),
+    ]);
+    return;
+  }
+
+  // △がない → 直接鍵状況更新送信
+  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
 async function handleReturnKey(event, answer) {
