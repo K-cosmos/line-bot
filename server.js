@@ -126,18 +126,49 @@ async function handleStatusChangeFlow(event, newStatus) {
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
-async function handleReturnKey(event, area, answer) {
-  const userId = event.source.userId;
+// ステータス更新後に呼び出す関数
+async function promptKeyReturn(event, areasToPrompt) {
+  await client.replyMessage(event.replyToken, {
+    type: 'template',
+    altText: 'どの鍵を返しますか？',
+    template: {
+      type: 'buttons',
+      text: 'どの鍵を返しますか？',
+      actions: [
+        { type: 'postback', label: '研究室', data: 'return_研究室' },
+        { type: 'postback', label: '実験室', data: 'return_実験室' },
+        { type: 'postback', label: '両方', data: 'return_両方' },
+        { type: 'postback', label: '返さない', data: 'return_なし' },
+      ],
+    },
+  });
+}
 
-  if (answer === 'yes') {
-    // 返却する場合だけ鍵状態更新する
-    const prevKeyStatus = { ...keyStatus };
-    keyStatus[area] = '×';
-    await sendKeyStatusUpdate(userId, null, prevKeyStatus, event.replyToken, '鍵の返却: しました');
+// 返却選択後の処理
+async function handleReturnKey(event, data) {
+  const userId = event.source.userId;
+  let messages = [];
+
+  if (data === 'なし') {
+    // 返さない
+    messages.push({ type: 'text', text: 'わかった！' });
   } else {
-    // 返却しない場合は鍵状態変更しない
-    await sendKeyStatusUpdate(userId, null, null, event.replyToken, '鍵の返却: しませんでした');
+    // 研究室・実験室・両方のとき
+    if (data === '研究室' || data === '両方') {
+      keyStatus['研究室'] = '×';
+      messages.push({ type: 'text', text: '研究室の鍵よろしくね！' });
+    }
+    if (data === '実験室' || data === '両方') {
+      keyStatus['実験室'] = '×';
+      messages.push({ type: 'text', text: '実験室の鍵よろしくね！' });
+    }
+
+    // 鍵の状態を表示するメッセージ
+    const keyMessage = `🔐 鍵の状態\n研究室: ${keyStatus['研究室']}\n実験室: ${keyStatus['実験室']}`;
+    messages.push({ type: 'text', text: keyMessage });
   }
+
+  await client.replyMessage(event.replyToken, messages);
 }
   
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
