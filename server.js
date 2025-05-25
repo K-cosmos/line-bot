@@ -121,6 +121,9 @@ async function handleReturnKey(event, answer) {
   const userId = event.source.userId;
   let resultText = '';
 
+  // 修正: 先にprevKeyStatusを保存
+  const prevKeyStatus = { ...keyStatus };
+
   if (answer === 'return_yes') {
     for (const area of ['研究室', '実験室']) {
       if (keyStatus[area] === '△') {
@@ -133,13 +136,13 @@ async function handleReturnKey(event, answer) {
     resultText = '鍵の返却：しませんでした';
   }
 
-  // 再計算
-  const prevKeyStatus = { ...keyStatus };
+  // 返却操作後に再計算
   recalcKeyStatus();
 
+  // ここで初めてsendKeyStatusUpdate
   await sendKeyStatusUpdate(userId, null, prevKeyStatus, event.replyToken, resultText);
 }
-
+  
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
   const keyChanged = ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area]);
 
