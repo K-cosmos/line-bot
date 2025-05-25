@@ -147,7 +147,6 @@ async function handleStatusChangeFlow(event, newStatus) {
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
-async function handleReturnKey(event, area) {
 // 返却選択後の処理
 async function handleReturnKey(event, data) {
   const userId = event.source.userId;
@@ -167,59 +166,6 @@ async function handleReturnKey(event, data) {
 
   // ここで鍵状況更新を統一メソッドで送るよ！
   await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText);
-}
-
-// △が1つだけのとき専用の「はい/いいえ」の返信処理
-async function handleSingleKeyReturn(event, area) {
-  const userId = event.source.userId;
-  const prevKeyStatus = { ...keyStatus };
-
-  keyStatus[area] = '×';
-  await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, 'わかった！');
-}
-
-async function handleStatusChangeFlow(event, newStatus) {
-  const userId = event.source.userId;
-  const profile = await client.getProfile(userId);
-  const isFirstUpdate = !members[userId];
-
-  members[userId] = { name: profile.displayName, status: newStatus };
-  const prevKeyStatus = { ...keyStatus };
-  recalcKeyStatus();
-
-  if (isFirstUpdate) {
-    await client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'ステータスを更新',
-    });
-    return;
-  }
-
-  const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-
-  if (areasToPrompt.length === 1) {
-    // △が1つだけなら、その鍵を返す？って聞く
-    await client.replyMessage(event.replyToken, {
-      type: 'template',
-      altText: `${areasToPrompt[0]}の鍵を返す？`,
-      template: {
-        type: 'confirm',
-        text: `${areasToPrompt[0]}の鍵を返す？`,
-        actions: [
-          { type: 'postback', label: 'はい', data: `return_${areasToPrompt[0]}` },
-          { type: 'postback', label: 'いいえ', data: 'return_なし' },
-        ],
-      },
-    });
-    return;
-  } else if (areasToPrompt.length > 1) {
-    // △が2つならどっちか・両方・返さないを聞く
-    await promptKeyReturn(event, areasToPrompt);
-    return;
-  }
-
-  // △がないなら普通に鍵状況更新を送る
-  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken);
 }
 
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
