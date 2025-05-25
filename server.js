@@ -126,28 +126,18 @@ async function handleStatusChangeFlow(event, newStatus) {
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
-async function handleReturnKey(event, answer) {
+async function handleReturnKey(event, area, answer) {
   const userId = event.source.userId;
-  let resultText = '';
 
-  if (answer === 'return_yes') {
-    for (const area of ['研究室', '実験室']) {
-      if (keyStatus[area] === '△') {
-        keyStatus[area] = '×';
-        console.log(`[鍵返却] ${area}：△→× by ${userId}`);
-      }
-    }
-    resultText = '鍵の返却：しました';
+  if (answer === 'yes') {
+    // 返却する場合だけ鍵状態更新する
+    const prevKeyStatus = { ...keyStatus };
+    keyStatus[area] = '×';
+    await sendKeyStatusUpdate(userId, null, prevKeyStatus, event.replyToken, '鍵の返却: しました');
   } else {
-    resultText = '鍵の返却：しませんでした';
+    // 返却しない場合は鍵状態変更しない
+    await sendKeyStatusUpdate(userId, null, null, event.replyToken, '鍵の返却: しませんでした');
   }
-
-  // 返却しなかったなら鍵状態は変えないので prevKeyStatusも更新しない
-  const prevKeyStatus = answer === 'return_yes' ? { ...keyStatus } : null;
-  recalcKeyStatus();
-
-  // sendKeyStatusUpdateの引数でprevKeyStatusをnullにすると鍵よろしくねをスキップ
-  await sendKeyStatusUpdate(userId, null, prevKeyStatus, event.replyToken, resultText);
 }
   
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
