@@ -96,7 +96,14 @@ async function handleEvent(event) {
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
   const profile = await client.getProfile(userId);
-  members[userId] = { name: profile.displayName, status: newStatus };
+
+  // 初期ステータスを学外に設定する（もしまだ登録されてなければ）
+  if (!members[userId]) {
+    members[userId] = { name: profile.displayName, status: '学外' };
+  }
+
+  // 新しいステータスに更新
+  members[userId].status = newStatus;
 
   // ステータス更新後の鍵状況計算
   const prevKeyStatus = { ...keyStatus };
@@ -116,7 +123,6 @@ async function handleStatusChangeFlow(event, newStatus) {
   // △がない → 直接鍵状況更新送信
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
-
 async function handleReturnKey(event, answer) {
   const userId = event.source.userId;
   let resultText = '';
