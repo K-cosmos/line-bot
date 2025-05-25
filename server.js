@@ -96,7 +96,6 @@ async function handleEvent(event) {
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
 
-  // 1回目だけLINEプロフィール取得が必要だから、ここで判定
   let isFirstTime = false;
   if (!members[userId]) {
     isFirstTime = true;
@@ -104,39 +103,36 @@ async function handleStatusChangeFlow(event, newStatus) {
     members[userId] = { name: profile.displayName, status: '学外' };
   }
 
-  // ステータス更新
   members[userId].status = newStatus;
 
-  if (isFirstTime) {
-    // 1回目だけ「ステータス更新中…」って返信しておく
-    await client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'ステータス更新中…ちょっと待ってね！',
-    });
-  }
-
-  // 鍵状況更新
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-  if (areasToPrompt.length > 0) {
-    const messages = [
-      { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-      createKeyReturnConfirmQuickReply(areasToPrompt),
-    ];
 
-    if (isFirstTime) {
-      // 1回目は上でreplyMessageしたからpushで送る
-      await pushMessageWithRetry(userId, messages);
+  if (isFirstTime) {
+    // 1回目はステータス更新中をreplyMessageで返して
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'ステータス更新中…ちょっと待ってね！',
+    });
+
+    // その後にpushMessageで本更新メッセージを送る
+    if (areasToPrompt.length > 0) {
+      await pushMessageWithRetry(userId, [
+        { type: 'text', text: `ステータスを「${newStatus}」に更新` },
+        createKeyReturnConfirmQuickReply(areasToPrompt),
+      ]);
     } else {
-      // 2回目以降はreplyTokenでそのまま返せる
-      await client.replyMessage(event.replyToken, messages);
+      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
     }
   } else {
-    // △なしならそのまま送る
-    if (isFirstTime) {
-      await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, null);
+    // 2回目以降はそのままreplyMessageで返す
+    if (areasToPrompt.length > 0) {
+      await client.replyMessage(event.replyToken, [
+        { type: 'text', text: `ステータスを「${newStatus}」に更新` },
+        createKeyReturnConfirmQuickReply(areasToPrompt),
+      ]);
     } else {
       await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken);
     }
