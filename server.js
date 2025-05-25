@@ -36,36 +36,33 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
 
 // 「鍵状態変更があった時だけ全員通知、最後の人には “よろしく” も」
 async function broadcastKeyStatus(lastKeyHolder) {
-  const messages = [{
-    type: 'text',
-    text:
-      `【🔐 鍵の状態変更】\n` +
-      `研究室: ${keyStatus['研究室']}\n` +
-      `実験室: ${keyStatus['実験室']}`,
-  }];
+  const sendTasks = Object.keys(members).map(async (userId) => {
+    const messages = [{
+      type: 'text',
+      text:
+        `【🔐 鍵の状態変更】\n` +
+        `研究室: ${keyStatus['研究室']}\n` +
+        `実験室: ${keyStatus['実験室']}`
+    }];
 
-  const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
-
-  // 先に全員に送信（429回避のため1.5秒待機）
-  await delay(1500);
-
-  for (const userId of Object.keys(members)) {
-    const personalMessages = [...messages];
-
-    // その人が最後に更新した人なら “よろしく” を追加
-    if (userId === lastKeyHolder && areasToPrompt.length > 0) {
-      const extraText = areasToPrompt.length === 1
-        ? `${areasToPrompt[0]}の鍵よろしくね！`
-        : `${areasToPrompt.join('と')}の鍵よろしくね！`;
-      personalMessages.push({ type: 'text', text: extraText });
+    if (userId === lastKeyHolder) {
+      const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
+      if (areasToPrompt.length > 0) {
+        const extraText = areasToPrompt.length === 1
+          ? `${areasToPrompt[0]}の鍵よろしくね！`
+          : `${areasToPrompt.join('と')}の鍵よろしくね！`;
+        messages.push({ type: 'text', text: extraText });
+      }
     }
 
     try {
-      await pushMessageWithRetry(userId, personalMessages);
+      await pushMessageWithRetry(userId, messages);
     } catch (e) {
       console.error('送信失敗:', e);
     }
-  }
+  });
+
+  await Promise.all(sendTasks);
 }
 
 function createKeyReturnConfirmQuickReply(areaList) {
@@ -191,11 +188,6 @@ async function handleStatusChange(event, newStatus) {
 
     if (areasToPrompt.length > 0) {
       replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
-    } else {
-      replyMessages.push({
-        type: 'text',
-        text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
-      });
     }
 
     return client.replyMessage(event.replyToken, replyMessages);
