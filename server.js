@@ -34,13 +34,37 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
   }
 }
 
-function broadcastKeyStatus() {
-  const text =
-    `【🔐 鍵の状態変更】\n` +
-    `研究室: ${keyStatus['研究室']}\n` +
-    `実験室: ${keyStatus['実験室']}`;
+// 「鍵状態変更があった時だけ全員通知、最後の人には “よろしく” も」
+async function broadcastKeyStatus(lastKeyHolder) {
+  const messages = [{
+    type: 'text',
+    text:
+      `【🔐 鍵の状態変更】\n` +
+      `研究室: ${keyStatus['研究室']}\n` +
+      `実験室: ${keyStatus['実験室']}`,
+  }];
+
+  const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
+
+  // 先に全員に送信（429回避のため1.5秒待機）
+  await delay(1500);
+
   for (const userId of Object.keys(members)) {
-    client.pushMessage(userId, { type: 'text', text });
+    const personalMessages = [...messages];
+
+    // その人が最後に更新した人なら “よろしく” を追加
+    if (userId === lastKeyHolder && areasToPrompt.length > 0) {
+      const extraText = areasToPrompt.length === 1
+        ? `${areasToPrompt[0]}の鍵よろしくね！`
+        : `${areasToPrompt.join('と')}の鍵よろしくね！`;
+      personalMessages.push({ type: 'text', text: extraText });
+    }
+
+    try {
+      await pushMessageWithRetry(userId, personalMessages);
+    } catch (e) {
+      console.error('送信失敗:', e);
+    }
   }
 }
 
@@ -117,7 +141,6 @@ async function handleEvent(event) {
 }
 
 function recalcKeyStatus(lastUserId) {
-  const keyReturnedAreas = [];
   let keyChanged = false;
 
   for (const area of ['研究室', '実験室']) {
@@ -125,7 +148,6 @@ function recalcKeyStatus(lastUserId) {
     const inArea = Object.values(members).filter(m => m.status === area).length;
 
     let next = prev;
-
     if (inArea > 0) {
       next = '〇';
     } else {
@@ -137,29 +159,12 @@ function recalcKeyStatus(lastUserId) {
       console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
       keyStatus[area] = next;
       keyChanged = true;
-
-      if (next === '×' && (prev === '△' || prev === '〇') && lastUserId) {
-        keyReturnedAreas.push(area);
-      }
     }
   }
 
   if (keyChanged) {
-    broadcastKeyStatus();
+    broadcastKeyStatus(lastUserId).catch(console.error);
   }
-
-  // ×にした人にだけ「よろしく！」送る
-  if (keyReturnedAreas.length > 0 && lastUserId) {
-    const message = {
-      type: 'text',
-      text: keyReturnedAreas.length === 1
-        ? `${keyReturnedAreas[0]}の鍵よろしく！`
-        : `${keyReturnedAreas.join('と')}の鍵よろしく！`,
-    };
-    pushMessageWithRetry(lastUserId, message).catch(console.error);
-  }
-
-  return { keyReturnedAreas, keyChanged };
 }
 
 async function handleStatusChange(event, newStatus) {
@@ -175,7 +180,7 @@ async function handleStatusChange(event, newStatus) {
     console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
     const prevKeyStatus = { ...keyStatus };
-    const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
+    recalcKeyStatus(userId);
 
     const replyMessages = [];
     replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
@@ -226,8 +231,6 @@ async function handleReturnKey(event, postbackData) {
     { type: 'text', text: resultText },
     { type: 'text', text: statusText },
   ]);
-
-  broadcastKeyStatus();
 }
 
 async function handleShowKeyStatus(event) {
