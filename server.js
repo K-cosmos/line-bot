@@ -84,9 +84,11 @@ async function handleEvent(event) {
     return handleShowAllMembers(event);
   }
 
-  if (data === 'return_yes' || data === 'return_no') {
-    return handleReturnKey(event, data);
-  }
+  if (data.startsWith('return_')) {
+  // 'return_研究室'とか'両方'とか'なし'がここでキャッチされるよ！
+  const area = data.replace('return_', '');
+  return handleReturnKey(event, area);
+}
 
   if (AREAS.includes(data)) {
     return handleStatusChangeFlow(event, data);
