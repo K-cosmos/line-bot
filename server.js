@@ -151,7 +151,9 @@ async function handleReturnKey(event, answer) {
 }
   
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
-  const keyChanged = ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area]);
+  const keyChanged = prevKeyStatus
+    ? ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area])
+    : false;
 
   const messages = [];
   if (prefixText) messages.push({ type: 'text', text: prefixText });
@@ -163,7 +165,6 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
       text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
     });
 
-    // △→×になったところに「よろしく」
     const areasToPrompt = ['研究室', '実験室'].filter(
       area => prevKeyStatus[area] === '△' && keyStatus[area] === '×'
     );
@@ -175,7 +176,7 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
     }
   }
 
-  if (messages.length === 0) return; // 変化なければ終了
+  if (messages.length === 0) return;
 
   if (replyToken) {
     await client.replyMessage(replyToken, messages);
@@ -183,7 +184,6 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
     await pushMessageWithRetry(userId, messages);
   }
 
-  // 3秒後に本人以外に送信
   if (keyChanged) {
     setTimeout(async () => {
       const otherUserIds = Object.keys(members).filter(id => id !== userId);
