@@ -36,7 +36,7 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
 
 function broadcastKeyStatus() {
   const text =
-    `🔐 鍵の状態変更\n` +
+    `【🔐 鍵の状態変更】\n` +
     `研究室: ${keyStatus['研究室']}\n` +
     `実験室: ${keyStatus['実験室']}`;
   for (const userId of Object.keys(members)) {
@@ -52,11 +52,19 @@ function createKeyReturnConfirmQuickReply(areaList) {
       items: [
         {
           type: 'action',
-          action: { type: 'postback', label: 'はい', data: 'return_yes' },
+          action: {
+            type: 'postback',
+            label: 'はい',
+            data: 'return_yes',
+          },
         },
         {
           type: 'action',
-          action: { type: 'postback', label: 'いいえ', data: 'return_no' },
+          action: {
+            type: 'postback',
+            label: 'いいえ',
+            data: 'return_no',
+          },
         },
       ],
     },
@@ -67,32 +75,6 @@ function formatKeyStatusText() {
   return ['研究室', '実験室'].map(area => `${area}：${keyStatus[area]}`).join('\n');
 }
 
-// ★共通化部分
-function createKeyStatusMessages(prevKeyStatus) {
-  const replyMessages = [];
-
-  // 鍵状況
-  replyMessages.push({
-    type: 'text',
-    text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
-  });
-
-  // ×になった鍵があれば「鍵よろしくね！」を送る
-  const areasBecameCross = ['研究室', '実験室'].filter(area =>
-    keyStatus[area] === '×' && prevKeyStatus[area] !== '×'
-  );
-  if (areasBecameCross.length > 0) {
-    const areasText = areasBecameCross.join('と');
-    replyMessages.push({
-      type: 'text',
-      text: `${areasText}の鍵よろしくね！`,
-    });
-  }
-
-  return replyMessages;
-}
-
-// ★ここから各ハンドラ
 async function handleEvent(event) {
   if (event.type !== 'postback') return;
 
@@ -111,13 +93,17 @@ async function handleEvent(event) {
     const quickReply = {
       items: AREAS.map(area => ({
         type: 'action',
-        action: { type: 'postback', label: area, data: area },
+        action: {
+          type: 'postback',
+          label: area,
+          data: area,
+        },
       })),
     };
     return client.replyMessage(event.replyToken, {
       type: 'text',
       text: 'ステータスを選択',
-      quickReply,
+      quickReply: quickReply,
     });
   }
 
@@ -162,6 +148,17 @@ function recalcKeyStatus(lastUserId) {
     broadcastKeyStatus();
   }
 
+  // ×にした人にだけ「よろしく！」送る
+  if (keyReturnedAreas.length > 0 && lastUserId) {
+    const message = {
+      type: 'text',
+      text: keyReturnedAreas.length === 1
+        ? `${keyReturnedAreas[0]}の鍵よろしく！`
+        : `${keyReturnedAreas.join('と')}の鍵よろしく！`,
+    };
+    pushMessageWithRetry(lastUserId, message).catch(console.error);
+  }
+
   return { keyReturnedAreas, keyChanged };
 }
 
@@ -181,11 +178,8 @@ async function handleStatusChange(event, newStatus) {
     const { keyReturnedAreas, keyChanged } = recalcKeyStatus(userId);
 
     const replyMessages = [];
-
-    // ① ステータス更新通知
     replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
 
-    // ② 鍵が△になったところを返却確認で聞く
     const areasToPrompt = ['研究室', '実験室'].filter(area =>
       keyStatus[area] === '△' && prevKeyStatus[area] !== '△'
     );
@@ -193,8 +187,10 @@ async function handleStatusChange(event, newStatus) {
     if (areasToPrompt.length > 0) {
       replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
     } else {
-      // ③ 共通関数で鍵状況メッセージ送信
-      replyMessages.push(...createKeyStatusMessages(prevKeyStatus));
+      replyMessages.push({
+        type: 'text',
+        text: `🔐 鍵の状態\n${formatKeyStatusText()}`,
+      });
     }
 
     return client.replyMessage(event.replyToken, replyMessages);
@@ -202,7 +198,7 @@ async function handleStatusChange(event, newStatus) {
     console.error('[ステータス変更エラー]', err);
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: 'ステータスの更新中にエラーが発生したよ。',
+      text: 'ステータスの更新中にエラーが発生しました。',
     });
   }
 }
@@ -223,14 +219,14 @@ async function handleReturnKey(event, postbackData) {
     resultText = '鍵の返却：しませんでした';
   }
 
-  const prevKeyStatus = { ...keyStatus };
-  recalcKeyStatus();
+  recalcKeyStatus(userId);
 
-  // 共通関数で鍵状況メッセージ送信
-  const replyMessages = [{ type: 'text', text: resultText }, ...createKeyStatusMessages(prevKeyStatus)];
-  await client.replyMessage(event.replyToken, replyMessages);
+  const statusText = `🔐 鍵の状態\n${formatKeyStatusText()}`;
+  await client.replyMessage(event.replyToken, [
+    { type: 'text', text: resultText },
+    { type: 'text', text: statusText },
+  ]);
 
-  // 全員に最新の鍵状況を送る
   broadcastKeyStatus();
 }
 
@@ -264,7 +260,7 @@ async function handleShowAllMembers(event) {
   return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
-// Webhook
+// Webhook受け口
 app.post('/webhook', (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
     .then(() => res.sendStatus(200))
@@ -274,7 +270,7 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 例外キャッチ
+// Node例外キャッチ
 process.on('unhandledRejection', (reason, p) => {
   console.error('未処理のPromise例外:', reason.stack || reason);
 });
