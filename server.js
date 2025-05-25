@@ -34,37 +34,6 @@ async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 
   }
 }
 
-// 「鍵状態変更があった時だけ全員通知、最後の人には “よろしく” も」
-async function broadcastKeyStatus(lastKeyHolder) {
-  const sendTasks = Object.keys(members).map(async (userId) => {
-    const messages = [{
-      type: 'text',
-      text:
-        `【🔐 鍵の状態変更】\n` +
-        `研究室: ${keyStatus['研究室']}\n` +
-        `実験室: ${keyStatus['実験室']}`
-    }];
-
-    if (userId === lastKeyHolder) {
-      const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
-      if (areasToPrompt.length > 0) {
-        const extraText = areasToPrompt.length === 1
-          ? `${areasToPrompt[0]}の鍵よろしくね！`
-          : `${areasToPrompt.join('と')}の鍵よろしくね！`;
-        messages.push({ type: 'text', text: extraText });
-      }
-    }
-
-    try {
-      await pushMessageWithRetry(userId, messages);
-    } catch (e) {
-      console.error('送信失敗:', e);
-    }
-  });
-
-  await Promise.all(sendTasks);
-}
-
 function createKeyReturnConfirmQuickReply(areaList) {
   return {
     type: 'text',
@@ -176,26 +145,74 @@ async function handleStatusChange(event, newStatus) {
     members[userId] = { name: profile.displayName, status: newStatus };
     console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
 
+    // キー状況の変更前を記録
     const prevKeyStatus = { ...keyStatus };
-    recalcKeyStatus(userId);
 
-    const replyMessages = [];
-    replyMessages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
+    // キー状況を再計算（ここで鍵状況が変わると全体送信用のメッセージも作る）
+    let keyChanged = false;
+    for (const area of ['研究室', '実験室']) {
+      const prev = keyStatus[area];
+      const inArea = Object.values(members).filter(m => m.status === area).length;
 
-    const areasToPrompt = ['研究室', '実験室'].filter(area =>
-      keyStatus[area] === '△' && prevKeyStatus[area] !== '△'
-    );
+      let next = prev;
+      if (inArea > 0) {
+        next = '〇';
+      } else {
+        const everEntered = Object.values(members).some(m => m.status === area || prev === '〇' || prev === '△');
+        next = everEntered ? '△' : '×';
+      }
 
+      if (prev !== next) {
+        console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
+        keyStatus[area] = next;
+        keyChanged = true;
+      }
+    }
+
+    // ステータス更新メッセージ
+    const replyMessages = [
+      { type: 'text', text: `ステータスを「${newStatus}」に更新` }
+    ];
+
+    // △から×に戻った鍵があれば「鍵よろしく」送る（学外以外の人のみ）
+    const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△' && prevKeyStatus[area] !== '△');
     if (areasToPrompt.length > 0) {
       replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
     }
 
-    return client.replyMessage(event.replyToken, replyMessages);
+    // （個人への返信）ステータス更新 & 必要な確認
+    await client.replyMessage(event.replyToken, replyMessages);
+
+    // （全体への鍵状況送信）鍵状況が変わったら「鍵の状態」を全体に送る
+    if (keyChanged) {
+      const broadcastMessages = [{
+        type: 'text',
+        text: `【🔐 鍵の状態変更】\n研究室: ${keyStatus['研究室']}\n実験室: ${keyStatus['実験室']}`
+      }];
+
+      // △や×に戻った場合はその人に「よろしく」も言う
+      const areasToPromptForHolder = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
+      if (areasToPromptForHolder.length > 0) {
+        const extraText = areasToPromptForHolder.length === 1
+          ? `${areasToPromptForHolder[0]}の鍵よろしくね！`
+          : `${areasToPromptForHolder.join('と')}の鍵よろしくね！`;
+        broadcastMessages.push({ type: 'text', text: extraText });
+      }
+
+      // 全員に同じメッセージを一斉送信（ここも直列で送信するから429防止！）
+      for (const userId of Object.keys(members)) {
+        try {
+          await pushMessageWithRetry(userId, broadcastMessages);
+        } catch (e) {
+          console.error('鍵状況送信失敗:', e);
+        }
+      }
+    }
   } catch (err) {
     console.error('[ステータス変更エラー]', err);
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: 'ステータスの更新中にエラーが発生しました。',
+      text: 'ステータスの更新中にエラーが発生したよ',
     });
   }
 }
