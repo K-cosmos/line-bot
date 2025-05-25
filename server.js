@@ -135,85 +135,65 @@ function recalcKeyStatus(lastUserId) {
 
 async function handleStatusChange(event, newStatus) {
   const userId = event.source.userId;
+  if (!AREAS.includes(newStatus)) return;
 
-  if (!AREAS.includes(newStatus)) {
-    return client.replyMessage(event.replyToken, { type: 'text', text: '無効なステータス' });
+  const profile = await client.getProfile(userId);
+  members[userId] = { name: profile.displayName, status: newStatus };
+
+  // 変更前の鍵状況
+  const prevKeyStatus = { ...keyStatus };
+
+  // 鍵状況更新
+  let keyChanged = false;
+  for (const area of ['研究室', '実験室']) {
+    const inArea = Object.values(members).filter(m => m.status === area).length;
+    let next = keyStatus[area];
+    if (inArea > 0) next = '〇';
+    else next = keyStatus[area] === '〇' ? '△' : '×';
+
+    if (next !== keyStatus[area]) {
+      keyStatus[area] = next;
+      keyChanged = true;
+    }
   }
 
-  try {
-    const profile = await client.getProfile(userId);
-    members[userId] = { name: profile.displayName, status: newStatus };
-    console.log(`[変更] ${profile.displayName}(${userId}) → ${newStatus}`);
+  // △→×になった鍵があれば「よろしく」
+  const areasToPrompt = ['研究室', '実験室'].filter(area =>
+    prevKeyStatus[area] === '△' && keyStatus[area] === '×'
+  );
 
-    // キー状況の変更前を記録
-    const prevKeyStatus = { ...keyStatus };
-
-    // キー状況を再計算（ここで鍵状況が変わると全体送信用のメッセージも作る）
-    let keyChanged = false;
-    for (const area of ['研究室', '実験室']) {
-      const prev = keyStatus[area];
-      const inArea = Object.values(members).filter(m => m.status === area).length;
-
-      let next = prev;
-      if (inArea > 0) {
-        next = '〇';
-      } else {
-        const everEntered = Object.values(members).some(m => m.status === area || prev === '〇' || prev === '△');
-        next = everEntered ? '△' : '×';
-      }
-
-      if (prev !== next) {
-        console.log(`[鍵更新] ${area}: ${prev} → ${next}`);
-        keyStatus[area] = next;
-        keyChanged = true;
-      }
+  // 本人へのメッセージ（ステータス変更 + 鍵状況 + よろしく）
+  const replyMessages = [
+    { type: 'text', text: `ステータスを「${newStatus}」に更新` },
+    {
+      type: 'text',
+      text: `【🔐 鍵の状態変更】\n研究室: ${keyStatus['研究室']}\n実験室: ${keyStatus['実験室']}`
     }
+  ];
+  if (areasToPrompt.length > 0) {
+    replyMessages.push({
+      type: 'text',
+      text: `${areasToPrompt.join('と')}の鍵よろしくね！`
+    });
+  }
+  await client.replyMessage(event.replyToken, replyMessages);
 
-    // ステータス更新メッセージ
-    const replyMessages = [
-      { type: 'text', text: `ステータスを「${newStatus}」に更新` }
-    ];
-
-    // △から×に戻った鍵があれば「鍵よろしく」送る（学外以外の人のみ）
-    const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△' && prevKeyStatus[area] !== '△');
-    if (areasToPrompt.length > 0) {
-      replyMessages.push(createKeyReturnConfirmQuickReply(areasToPrompt));
-    }
-
-    // （個人への返信）ステータス更新 & 必要な確認
-    await client.replyMessage(event.replyToken, replyMessages);
-
-    // （全体への鍵状況送信）鍵状況が変わったら「鍵の状態」を全体に送る
-    if (keyChanged) {
+  // 3秒後に他の全員に鍵状況だけ送信
+  if (keyChanged) {
+    setTimeout(async () => {
+      const otherUserIds = Object.keys(members).filter(id => id !== userId);
       const broadcastMessages = [{
         type: 'text',
         text: `【🔐 鍵の状態変更】\n研究室: ${keyStatus['研究室']}\n実験室: ${keyStatus['実験室']}`
       }];
-
-      // △や×に戻った場合はその人に「よろしく」も言う
-      const areasToPromptForHolder = ['研究室', '実験室'].filter(area => keyStatus[area] === '×');
-      if (areasToPromptForHolder.length > 0) {
-        const extraText = areasToPromptForHolder.length === 1
-          ? `${areasToPromptForHolder[0]}の鍵よろしくね！`
-          : `${areasToPromptForHolder.join('と')}の鍵よろしくね！`;
-        broadcastMessages.push({ type: 'text', text: extraText });
-      }
-
-      // 全員に同じメッセージを一斉送信（ここも直列で送信するから429防止！）
-      for (const userId of Object.keys(members)) {
+      for (const otherId of otherUserIds) {
         try {
-          await pushMessageWithRetry(userId, broadcastMessages);
+          await pushMessageWithRetry(otherId, broadcastMessages);
         } catch (e) {
-          console.error('鍵状況送信失敗:', e);
+          console.error('全体送信失敗:', e);
         }
       }
-    }
-  } catch (err) {
-    console.error('[ステータス変更エラー]', err);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'ステータスの更新中にエラーが発生したよ',
-    });
+    }, 3000);
   }
 }
 
