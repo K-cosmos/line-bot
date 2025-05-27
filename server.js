@@ -80,11 +80,15 @@ async function handleEvent(event) {
         action: { type: 'postback', label: area, data: area },
       })),
     };
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'ステータスを選択',
-      quickReply,
-    });
+    // 1秒後に送信
+    setTimeout(() => {
+      client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: 'ステータスを選択',
+        quickReply,
+      }).catch(console.error);
+    }, 1000);
+    return;
   }
 
   if (data === 'show_key_status') {
@@ -114,20 +118,23 @@ async function handleStatusChangeFlow(event, newStatus) {
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
-  // 「ステータスを更新」はこの時点で送信
   await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken, null, true);
 
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
 
   if (areasToPrompt.length === 1) {
-    // 1つだけ△ → その鍵だけ確認
-    await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
+    // 1秒待ってから鍵返却確認を送る
+    setTimeout(async () => {
+      await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
+    }, 1000);
     return;
   }
 
   if (areasToPrompt.length === 2) {
-    // 両方△ → どれを返すか4択
-    await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
+    // 1秒待ってから鍵返却テンプレを送る
+    setTimeout(async () => {
+      await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
+    }, 1000);
     return;
   }
 }
@@ -148,7 +155,6 @@ async function handleReturnKey(event, data) {
     }
   }
 
-  // 返却フローでは「ステータス更新メッセージ」を再送しない（falseにする）
   await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText, false);
 }
 
@@ -186,7 +192,6 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
     await pushMessageWithRetry(userId, messages);
   }
 
-  // 他ユーザーへの鍵状態変更の全体送信
   if (keyChanged) {
     setTimeout(async () => {
       const otherUserIds = Object.keys(members).filter(id => id !== userId);
@@ -220,18 +225,21 @@ async function handleShowKeyStatus(event) {
   if (areasToPrompt.length === 0) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
   }
-  if (areasToPrompt.length === 1) {
-    return client.replyMessage(event.replyToken, [
-      { type: 'text', text },
-      createYesNoQuickReply(areasToPrompt[0]),
-    ]);
-  }
-  if (areasToPrompt.length === 2) {
-    return client.replyMessage(event.replyToken, [
-      { type: 'text', text },
-      createMultiKeyReturnTemplate(),
-    ]);
-  }
+
+  // 1秒後に鍵返却メッセージを送る
+  setTimeout(() => {
+    if (areasToPrompt.length === 1) {
+      client.replyMessage(event.replyToken, [
+        { type: 'text', text },
+        createYesNoQuickReply(areasToPrompt[0]),
+      ]).catch(console.error);
+    } else {
+      client.replyMessage(event.replyToken, [
+        { type: 'text', text },
+        createMultiKeyReturnTemplate(),
+      ]).catch(console.error);
+    }
+  }, 1000);
 }
 
 async function handleShowAllMembers(event) {
@@ -251,8 +259,6 @@ async function handleShowAllMembers(event) {
 }
 
 const cron = require('node-cron');
-
-// 4時のステータスリセット
 cron.schedule('0 4 * * *', () => {
   console.log('🔄 4時だよ！全員のステータスを「学外」にするよ！');
   for (const userId in members) {
