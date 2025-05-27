@@ -175,9 +175,6 @@ async function handleReturnKey(event, data) {
   await client.multicast(allUserIds, messages);
 }
 
-  await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText, false);
-}
-
 async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null, sendStatusUpdate = true) {
   const keyChanged = prevKeyStatus
     ? ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area])
