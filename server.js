@@ -24,7 +24,7 @@ function delay(ms) {
 async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 1500) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await delay(1000); // 1秒待機
+      await delay(1500); // 1.5秒待機
       await client.pushMessage(userId, messages);
       return;
     } catch (err) {
@@ -81,14 +81,12 @@ async function handleEvent(event) {
         action: { type: 'postback', label: area, data: area },
       })),
     };
-    // 1秒後に送信
-    setTimeout(() => {
-      client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: 'ステータスを選択',
-        quickReply,
-      }).catch(console.error);
-    }, 1000);
+    await delay(1500);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'ステータスを選択',
+      quickReply,
+    }).catch(console.error);
     return;
   }
 
@@ -124,18 +122,14 @@ async function handleStatusChangeFlow(event, newStatus) {
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
 
   if (areasToPrompt.length === 1) {
-    // 1秒待ってから鍵返却確認を送る
-    setTimeout(async () => {
-      await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
-    }, 1000);
+    await delay(1500);
+    await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
     return;
   }
 
   if (areasToPrompt.length === 2) {
-    // 1秒待ってから鍵返却テンプレを送る
-    setTimeout(async () => {
-      await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
-    }, 1000);
+    await delay(1500);
+    await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
     return;
   }
 }
@@ -187,15 +181,14 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
 
   if (messages.length === 0) return;
 
+  await delay(1500);
   if (replyToken) {
-    await delay(1000); // 1秒待機
     await client.replyMessage(replyToken, messages);
   } else {
     await pushMessageWithRetry(userId, messages);
   }
 
   if (keyChanged) {
-    // 3秒後に他のメンバーにマルチキャスト
     setTimeout(() => {
       (async () => {
         const otherUserIds = Object.keys(members).filter(id => id !== userId);
@@ -204,8 +197,8 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
           type: 'text',
           text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
         }];
+        await delay(1500);
         try {
-          await delay(1000); // 1秒待機
           await client.multicast(otherUserIds, multicastMsg);
           console.log('Multicast送信成功！');
         } catch (e) {
@@ -230,24 +223,22 @@ async function handleShowKeyStatus(event) {
   const text = `🔐 鍵の状態\n${formatKeyStatusText()}`;
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
 
+  await delay(1500);
   if (areasToPrompt.length === 0) {
     return client.replyMessage(event.replyToken, { type: 'text', text });
   }
 
-  // 1秒後に鍵返却メッセージを送る
-  setTimeout(() => {
-    if (areasToPrompt.length === 1) {
-      client.replyMessage(event.replyToken, [
-        { type: 'text', text },
-        createYesNoQuickReply(areasToPrompt[0]),
-      ]).catch(console.error);
-    } else {
-      client.replyMessage(event.replyToken, [
-        { type: 'text', text },
-        createMultiKeyReturnTemplate(),
-      ]).catch(console.error);
-    }
-  }, 1000);
+  if (areasToPrompt.length === 1) {
+    return client.replyMessage(event.replyToken, [
+      { type: 'text', text },
+      createYesNoQuickReply(areasToPrompt[0]),
+    ]).catch(console.error);
+  } else {
+    return client.replyMessage(event.replyToken, [
+      { type: 'text', text },
+      createMultiKeyReturnTemplate(),
+    ]).catch(console.error);
+  }
 }
 
 async function handleShowAllMembers(event) {
@@ -263,6 +254,7 @@ async function handleShowAllMembers(event) {
     .map(area => `${area}\n${statusGroups[area].map(name => `・${name}`).join('\n')}`)
     .join('\n\n') || '全員学外';
 
+  await delay(1500);
   return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
