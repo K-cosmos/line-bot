@@ -190,16 +190,16 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
   if (keyChanged) {
     setTimeout(async () => {
       const otherUserIds = Object.keys(members).filter(id => id !== userId);
-      const broadcastMsg = [{
+      if (otherUserIds.length === 0) return;
+      const multicastMsg = [{
         type: 'text',
         text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
       }];
-      for (const id of otherUserIds) {
-        try {
-          await pushMessageWithRetry(id, broadcastMsg);
-        } catch (e) {
-          console.error('全体送信失敗:', e);
-        }
+      try {
+        await client.multicast(otherUserIds, multicastMsg);
+        console.log('Multicast送信成功！');
+      } catch (e) {
+        console.error('Multicast送信失敗:', e);
       }
     }, 3000);
   }
