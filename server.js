@@ -108,53 +108,37 @@ async function handleEvent(event) {
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
   const profile = await client.getProfile(userId);
-  const isFirstUpdate = !members[userId];
 
   members[userId] = { name: profile.displayName, status: newStatus };
 
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
-  if (isFirstUpdate) {
-    await client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'ステータスを更新',
-    });
-    return;
-  }
+  // 「ステータスを更新」はこの時点で送信
+  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken, null, true);
 
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
 
   if (areasToPrompt.length === 1) {
     // 1つだけ△ → その鍵だけ確認
-    await client.replyMessage(event.replyToken, [
-      { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-      createYesNoQuickReply(areasToPrompt[0]),
-    ]);
+    await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
     return;
   }
 
   if (areasToPrompt.length === 2) {
     // 両方△ → どれを返すか4択
-    await client.replyMessage(event.replyToken, [
-      { type: 'text', text: `ステータスを「${newStatus}」に更新` },
-      createMultiKeyReturnTemplate(),
-    ]);
+    await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
     return;
   }
-
-  // △なし → 直接鍵の状況送信
-  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus);
 }
 
-// 返却選択後の処理
 async function handleReturnKey(event, data) {
   const userId = event.source.userId;
   const prevKeyStatus = { ...keyStatus };
   let prefixText = null;
 
   if (data === 'なし') {
-    prefixText = 'わかった！';
+    prefixText = '鍵の管理よろしくね！';
   } else {
     if (data === '研究室' || data === '両方') {
       keyStatus['研究室'] = '×';
@@ -164,18 +148,18 @@ async function handleReturnKey(event, data) {
     }
   }
 
-  // ここで鍵状況更新を統一メソッドで送るよ！
-  await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText);
+  // 返却フローでは「ステータス更新メッセージ」を再送しない（falseにする）
+  await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText, false);
 }
 
-async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null) {
+async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken = null, prefixText = null, sendStatusUpdate = true) {
   const keyChanged = prevKeyStatus
     ? ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area])
     : false;
 
   const messages = [];
   if (prefixText) messages.push({ type: 'text', text: prefixText });
-  if (newStatus) messages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
+  if (sendStatusUpdate && newStatus) messages.push({ type: 'text', text: `ステータスを「${newStatus}」に更新` });
 
   if (keyChanged) {
     messages.push({
@@ -202,6 +186,7 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
     await pushMessageWithRetry(userId, messages);
   }
 
+  // 他ユーザーへの鍵状態変更の全体送信
   if (keyChanged) {
     setTimeout(async () => {
       const otherUserIds = Object.keys(members).filter(id => id !== userId);
@@ -267,7 +252,7 @@ async function handleShowAllMembers(event) {
 
 const cron = require('node-cron');
 
-// ここにcronのスケジュール処理
+// 4時のステータスリセット
 cron.schedule('0 4 * * *', () => {
   console.log('🔄 4時だよ！全員のステータスを「学外」にするよ！');
   for (const userId in members) {
