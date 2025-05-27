@@ -24,6 +24,7 @@ function delay(ms) {
 async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 1500) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      await delay(1000); // 1秒待機
       await client.pushMessage(userId, messages);
       return;
     } catch (err) {
@@ -187,33 +188,35 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
   if (messages.length === 0) return;
 
   if (replyToken) {
+    await delay(1000); // 1秒待機
     await client.replyMessage(replyToken, messages);
   } else {
     await pushMessageWithRetry(userId, messages);
   }
 
   if (keyChanged) {
-  if (keyChanged) {
-  setTimeout(() => {
-    (async () => {
-      const otherUserIds = Object.keys(members).filter(id => id !== userId);
-      if (otherUserIds.length === 0) return;
-      const multicastMsg = [{
-        type: 'text',
-        text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
-      }];
-      try {
-        await client.multicast(otherUserIds, multicastMsg);
-        console.log('Multicast送信成功！');
-      } catch (e) {
-        console.error('Multicast送信失敗:', e.response?.data || e);
-      }
-    })().catch(e => {
-      console.error('setTimeout内での例外:', e);
-    });
-  }, 3000);
+    // 3秒後に他のメンバーにマルチキャスト
+    setTimeout(() => {
+      (async () => {
+        const otherUserIds = Object.keys(members).filter(id => id !== userId);
+        if (otherUserIds.length === 0) return;
+        const multicastMsg = [{
+          type: 'text',
+          text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
+        }];
+        try {
+          await delay(1000); // 1秒待機
+          await client.multicast(otherUserIds, multicastMsg);
+          console.log('Multicast送信成功！');
+        } catch (e) {
+          console.error('Multicast送信失敗:', e.response?.data || e);
+        }
+      })().catch(e => {
+        console.error('setTimeout内での例外:', e);
+      });
+    }, 3000);
+  }
 }
-  }}
 
 function recalcKeyStatus() {
   for (const area of ['研究室', '実験室']) {
