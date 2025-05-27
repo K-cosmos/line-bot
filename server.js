@@ -265,6 +265,16 @@ async function handleShowAllMembers(event) {
   return client.replyMessage(event.replyToken, { type: 'text', text });
 }
 
+const cron = require('node-cron');
+
+// ここにcronのスケジュール処理
+cron.schedule('0 4 * * *', () => {
+  console.log('🔄 4時だよ！全員のステータスを「学外」にするよ！');
+  for (const userId in members) {
+    members[userId].status = '学外';
+  }
+});
+
 app.post('/webhook', (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
     .then(() => res.sendStatus(200))
