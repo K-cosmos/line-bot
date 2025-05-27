@@ -193,21 +193,22 @@ async function sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, replyToken 
   }
 
   if (keyChanged) {
-    setTimeout(async () => {
-      const otherUserIds = Object.keys(members).filter(id => id !== userId);
-      if (otherUserIds.length === 0) return;
-      const multicastMsg = [{
-        type: 'text',
-        text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
-      }];
-      try {
-        await client.multicast(otherUserIds, multicastMsg);
-        console.log('Multicast送信成功！');
-      } catch (e) {
-        console.error('Multicast送信失敗:', e);
-      }
-    }, 3000);
-  }
+  setTimeout(async () => {
+    console.log('鍵変更のお知らせ送信処理、開始！');
+    const otherUserIds = Object.keys(members).filter(id => id !== userId);
+    if (otherUserIds.length === 0) return;
+    const multicastMsg = [{
+      type: 'text',
+      text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
+    }];
+    try {
+      await client.multicast(otherUserIds, multicastMsg);
+      console.log('Multicast送信成功！');
+    } catch (e) {
+      console.error('Multicast送信失敗:', e.response?.data || e);
+    }
+  }, 3000);
+}
 }
 
 function recalcKeyStatus() {
