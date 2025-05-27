@@ -21,16 +21,18 @@ function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function pushMessageWithRetry(userId, messages, maxRetries = 3, delayMs = 1500) {
+async function pushMessageWithRetry(userId, messages, maxRetries = 3) {
+  let delayMs = 3000; // 3秒スタート
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await delay(1500); // 1.5秒待機
+      await delay(delayMs);
       await client.pushMessage(userId, messages);
+      console.log(`pushMessage成功！試行:${attempt}`);
       return;
     } catch (err) {
       console.error(`pushMessage失敗 リトライ残り:${maxRetries - attempt} エラー:`, err.message || err);
       if (attempt === maxRetries) throw err;
-      await delay(delayMs);
+      delayMs *= 2; // 失敗したら待機時間を倍にする
     }
   }
 }
