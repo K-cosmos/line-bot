@@ -113,32 +113,42 @@ async function handleEvent(event) {
 async function handleStatusChangeFlow(event, newStatus) {
   const userId = event.source.userId;
   const profile = await client.getProfile(userId);
-
   members[userId] = { name: profile.displayName, status: newStatus };
 
   const prevKeyStatus = { ...keyStatus };
   recalcKeyStatus();
 
-  await sendKeyStatusUpdate(userId, newStatus, prevKeyStatus, event.replyToken, null, true);
+  // ステータス変更通知（全員に送る）
+  const statusMessage = { type: 'text', text: `ステータスを「${newStatus}」に更新したよ！` };
 
+  // 鍵の状態が変わったら鍵状況も全員に送る
+  const keyChanged = ['研究室', '実験室'].some(area => prevKeyStatus[area] !== keyStatus[area]);
+  const messages = [statusMessage];
+  if (keyChanged) {
+    messages.push({
+      type: 'text',
+      text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
+    });
+  }
+
+  // 全員にまとめて送る
+  const allUserIds = Object.keys(members);
+  await delay(1500);
+  await client.multicast(allUserIds, messages);
+
+  // △が出たらその人に鍵返すか確認
   const areasToPrompt = ['研究室', '実験室'].filter(area => keyStatus[area] === '△');
-
   if (areasToPrompt.length === 1) {
     await delay(1500);
     await pushMessageWithRetry(userId, createYesNoQuickReply(areasToPrompt[0]));
-    return;
-  }
-
-  if (areasToPrompt.length === 2) {
+  } else if (areasToPrompt.length === 2) {
     await delay(1500);
     await pushMessageWithRetry(userId, createMultiKeyReturnTemplate());
-    return;
   }
 }
 
 async function handleReturnKey(event, data) {
   const userId = event.source.userId;
-  const prevKeyStatus = { ...keyStatus };
   let prefixText = null;
 
   if (data === 'なし') {
@@ -151,6 +161,19 @@ async function handleReturnKey(event, data) {
       keyStatus['実験室'] = '×';
     }
   }
+
+  recalcKeyStatus();
+  const messages = [];
+  if (prefixText) messages.push({ type: 'text', text: prefixText });
+  messages.push({
+    type: 'text',
+    text: `【🔐 鍵の状態変更】\n${formatKeyStatusText()}`,
+  });
+
+  const allUserIds = Object.keys(members);
+  await delay(1500);
+  await client.multicast(allUserIds, messages);
+}
 
   await sendKeyStatusUpdate(userId, members[userId]?.status, prevKeyStatus, event.replyToken, prefixText, false);
 }
