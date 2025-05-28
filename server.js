@@ -29,9 +29,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
   for (const event of events) {
     if (event.type === "follow" || event.type === "message" && event.message.type === "text") {
       const userId = event.source.userId;
-      // スプレッドシートからデータ取得
-      await sheet.loadCells("A2:E"); // ステータス管理表の範囲
 
+      await sheet.loadCells("A2:E");
       const rows = await sheet.getRows();
       const members = rows.map(row => ({
         name: row.Name,
@@ -39,11 +38,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
         keyLab: row.LabKey,
         keyExp: row.ExpKey,
         userId: row.UserId,
+        row: row, // 更新用にrowを残す
       }));
 
-      // きおりのユーザー情報取得
       const currentUser = members.find(m => m.userId === userId);
-
       if (!currentUser) {
         await client.replyMessage(event.replyToken, {
           type: "text",
@@ -52,20 +50,42 @@ app.post("/webhook", middleware(config), async (req, res) => {
         return;
       }
 
-      // 在室状況を作成
+      // 在室状況
       const inLab = members.filter(m => m.status === "研究室");
       const inExp = members.filter(m => m.status === "実験室");
       const inCampus = members.filter(m => m.status === "学内");
 
+      // 在室状況による鍵状態の強制変更
+      const labKeyStatus = inLab.length > 0 ? "〇" : "△";
+      const expKeyStatus = inExp.length > 0 ? "〇" : "△";
+
+      // スプレッドシートの鍵状態を更新
+      for (const m of members) {
+        // 研究室の鍵
+        if (m.keyLab !== labKeyStatus) {
+          m.row.LabKey = labKeyStatus;
+          await m.row.save();
+        }
+        // 実験室の鍵
+        if (m.keyExp !== expKeyStatus) {
+          m.row.ExpKey = expKeyStatus;
+          await m.row.save();
+        }
+      }
+
+      // 在室状況メッセージ
       const roomStatusMessage = `研究室\n${inLab.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
                                 `実験室\n${inExp.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
                                 `学内\n${inCampus.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}`;
 
-      // リッチメニューの分岐条件
+      // ユーザーの最新情報を取得し直す（鍵状態反映）
+      const updatedUser = members.find(m => m.userId === userId);
+
+      // リッチメニュー決定
       const richMenuAlias = getRichMenuAlias(
-        currentUser.status,
-        currentUser.keyLab,
-        currentUser.keyExp,
+        updatedUser.status,
+        labKeyStatus,
+        expKeyStatus,
         inLab.length > 0,
         inExp.length > 0,
         inCampus.length > 0
@@ -74,7 +94,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
       // ユーザーにリッチメニューをリンク
       await client.linkRichMenuToUser(userId, richMenuAlias);
 
-      // 在室状況のメッセージを送信
+      // 在室状況を返す
       await client.replyMessage(event.replyToken, {
         type: "text",
         text: roomStatusMessage,
@@ -84,15 +104,11 @@ app.post("/webhook", middleware(config), async (req, res) => {
   res.send("ok");
 });
 
-// リッチメニューエイリアス名を決定する関数
+// リッチメニューエイリアス名を決める関数
 function getRichMenuAlias(status, keyLab, keyExp, hasLab, hasExp, hasCampus) {
-  // 在室状況は「1人以上いる:1、誰もいない:0」
   const labStatus = hasLab ? "1" : "0";
   const expStatus = hasExp ? "1" : "0";
   const campusStatus = hasCampus ? "1" : "0";
-
-  // 例: lab_labKey_expKey_labStatus_expStatus_campusStatus
-  // 研究室_〇_△_1_0_1 → richmenu_lab_〇_△_1_0_1
   return `richmenu_${status}_${keyLab}_${keyExp}_${labStatus}_${expStatus}_${campusStatus}`;
 }
 
