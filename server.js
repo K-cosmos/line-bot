@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 // LINE Bot設定
 const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const client = new Client(config);
