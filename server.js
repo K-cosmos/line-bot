@@ -18,15 +18,19 @@ const client = new Client(config);
 // メンバー管理配列
 let members = [];
 
-// 4時に全員のステータス・鍵状態を初期化するcronジョブ
+// 部屋の鍵状態（全体で共通管理）
+let labKeyStatus = "×";
+let expKeyStatus = "×";
+
+// 4時に全員のステータスと鍵状態を初期化するcronジョブ
 cron.schedule("0 4 * * *", () => {
-  console.log("🔄 毎日4時にステータスをリセットするよ！");
+  console.log("🔄 毎日4時にステータスと鍵をリセットするよ！");
   members = members.map(m => ({
     ...m,
     status: "学外",
-    keyLab: "×",
-    keyExp: "×",
   }));
+  labKeyStatus = "×";
+  expKeyStatus = "×";
 });
 
 // expressのjsonパーサー
@@ -48,8 +52,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
           name: userMessage,
           userId: userId,
           status: "学外",
-          keyLab: "×",
-          keyExp: "×",
         };
         members.push(currentUser);
 
@@ -57,7 +59,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           type: "text",
           text: `はじめまして！「${userMessage}」として登録したよ！`,
         });
-        continue; // 処理終了
+        continue;
       }
 
       // 以降は在室状況表示
@@ -65,16 +67,9 @@ app.post("/webhook", middleware(config), async (req, res) => {
       const inExp = members.filter(m => m.status === "実験室");
       const inCampus = members.filter(m => m.status === "学内");
 
-      // 鍵状態を決定
-      const labKeyStatus = inLab.length > 0 ? "〇" : "△";
-      const expKeyStatus = inExp.length > 0 ? "〇" : "△";
-
-      // 鍵状態を反映
-      members = members.map(m => ({
-        ...m,
-        keyLab: labKeyStatus,
-        keyExp: expKeyStatus,
-      }));
+      // 🔑 鍵状態（全体）を決定
+      labKeyStatus = inLab.length > 0 ? "〇" : "△";
+      expKeyStatus = inExp.length > 0 ? "〇" : "△";
 
       // 在室状況メッセージ
       const roomStatusMessage =
