@@ -4,8 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
-  "type": "module"
   },
+  "type": "module",
   "dependencies": {
     "@line/bot-sdk": "^9.9.0",
     "axios": "^1.9.0",
