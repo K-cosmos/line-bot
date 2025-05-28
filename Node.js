@@ -1,42 +1,40 @@
-const fs = require('fs');
-const { Client } = require('@line/bot-sdk');
+import fs from "fs";
+import path from "path";
+import line from "@line/bot-sdk";
 
-const client = new Client({
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
+const client = new line.Client({
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN
 });
 
-async function setupRichMenu() {
-  const richMenu = await client.createRichMenu({
-    size: { width: 1200, height: 405 },
+async function createRichMenu() {
+  const richMenu = {
+    size: {
+      width: 2500,
+      height: 1686
+    },
     selected: true,
-    name: 'status-richmenu',
-    chatBarText: 'メニューを開く',
+    name: "研究室Botメニュー",
+    chatBarText: "メニューを開く",
     areas: [
-      {
-        bounds: { x: 0, y: 0, width: 400, height: 405 },
-        action: { type: 'postback', data: 'open_status_menu' },
-      },
-      {
-        bounds: { x: 400, y: 0, width: 400, height: 405 },
-        action: { type: 'postback', data: 'show_key_status' },
-      },
-      {
-        bounds: { x: 800, y: 0, width: 400, height: 405 },
-        action: { type: 'postback', data: 'show_all_members' },
-      },
-    ],
-  });
+      { bounds: { x: 0, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:status1" } },
+      { bounds: { x: 0, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:status2" } },
+      { bounds: { x: 0, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:status3" } },
+      { bounds: { x: 833, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab1" } },
+      { bounds: { x: 833, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab2" } },
+      { bounds: { x: 833, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab3" } },
+      { bounds: { x: 1666, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab4" } },
+      { bounds: { x: 1666, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab5" } },
+      { bounds: { x: 1666, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab6" } },
+      { bounds: { x: 1666, y: 1664, width: 833, height: 128 }, action: { type: "postback", data: "btn:detail" } }
+    ]
+  };
 
-  console.log('RichMenu ID:', richMenu);
+  const richMenuId = await client.createRichMenu(richMenu);
+  console.log("リッチメニュー作成完了！ID:", richMenuId);
 
-  // 画像アップロード
-  const imagePath = './richmenu.png'; // あなたの画像のパス（保存済み）
-  await client.setRichMenuImage(richMenu, fs.createReadStream(imagePath));
-
-  // 全ユーザーにデフォルト設定
-  await client.setDefaultRichMenu(richMenu);
-  console.log('リッチメニュー設定完了');
+  const imagePath = path.resolve("./richmenu.png");
+  await client.setRichMenuImage(richMenuId, fs.createReadStream(imagePath));
+  console.log("画像アップロード完了！");
 }
 
-setupRichMenu().catch(console.error);
+createRichMenu().catch(console.error);
