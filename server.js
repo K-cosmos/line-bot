@@ -1,89 +1,90 @@
 import express from "express";
 import { middleware, Client } from "@line/bot-sdk";
 import dotenv from "dotenv";
-import { GoogleSpreadsheet } from "google-spreadsheet";
+import cron from "node-cron";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// LINE Bot設定
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 const client = new Client(config);
 
-// Google Sheets初期化
-const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-await doc.useServiceAccountAuth({
-  client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-  private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+// メンバー管理配列
+let members = [];
+
+// 4時に全員のステータス・鍵状態を初期化するcronジョブ
+cron.schedule("0 4 * * *", () => {
+  console.log("🔄 毎日4時にステータスをリセットするよ！");
+  members = members.map(m => ({
+    ...m,
+    status: "学外",
+    keyLab: "×",
+    keyExp: "×",
+  }));
 });
-await doc.loadInfo();
-const sheet = doc.sheetsByTitle["Status"];
+
+// expressのjsonパーサー
+app.use(express.json());
 
 // LINE webhook受信
 app.post("/webhook", middleware(config), async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
-    if (event.type === "follow" || event.type === "message" && event.message.type === "text") {
+    if (event.type === "message" && event.message.type === "text") {
       const userId = event.source.userId;
+      const userMessage = event.message.text.trim();
 
-      await sheet.loadCells("A2:E");
-      const rows = await sheet.getRows();
-      const members = rows.map(row => ({
-        name: row.Name,
-        status: row.Status,
-        keyLab: row.LabKey,
-        keyExp: row.ExpKey,
-        userId: row.UserId,
-        row: row, // 更新用にrowを残す
-      }));
+      let currentUser = members.find(m => m.userId === userId);
 
-      const currentUser = members.find(m => m.userId === userId);
+      // 初回メッセージなら名前として登録
       if (!currentUser) {
+        currentUser = {
+          name: userMessage,
+          userId: userId,
+          status: "学外",
+          keyLab: "×",
+          keyExp: "×",
+        };
+        members.push(currentUser);
+
         await client.replyMessage(event.replyToken, {
           type: "text",
-          text: "ユーザー情報が見つからないよ！",
+          text: `はじめまして！「${userMessage}」として登録したよ！`,
         });
-        return;
+        continue; // 処理終了
       }
 
-      // 在室状況
+      // 以降は在室状況表示
       const inLab = members.filter(m => m.status === "研究室");
       const inExp = members.filter(m => m.status === "実験室");
       const inCampus = members.filter(m => m.status === "学内");
 
-      // 在室状況による鍵状態の強制変更
+      // 鍵状態を決定
       const labKeyStatus = inLab.length > 0 ? "〇" : "△";
       const expKeyStatus = inExp.length > 0 ? "〇" : "△";
 
-      // スプレッドシートの鍵状態を更新
-      for (const m of members) {
-        // 研究室の鍵
-        if (m.keyLab !== labKeyStatus) {
-          m.row.LabKey = labKeyStatus;
-          await m.row.save();
-        }
-        // 実験室の鍵
-        if (m.keyExp !== expKeyStatus) {
-          m.row.ExpKey = expKeyStatus;
-          await m.row.save();
-        }
-      }
+      // 鍵状態を反映
+      members = members.map(m => ({
+        ...m,
+        keyLab: labKeyStatus,
+        keyExp: expKeyStatus,
+      }));
 
       // 在室状況メッセージ
-      const roomStatusMessage = `研究室\n${inLab.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
-                                `実験室\n${inExp.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
-                                `学内\n${inCampus.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}`;
-
-      // ユーザーの最新情報を取得し直す（鍵状態反映）
-      const updatedUser = members.find(m => m.userId === userId);
+      const roomStatusMessage =
+        `研究室\n${inLab.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
+        `実験室\n${inExp.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}\n\n` +
+        `学内\n${inCampus.map(m => `・${m.name}`).join("\n") || "（誰もいない）"}`;
 
       // リッチメニュー決定
       const richMenuAlias = getRichMenuAlias(
-        updatedUser.status,
+        currentUser.status,
         labKeyStatus,
         expKeyStatus,
         inLab.length > 0,
@@ -94,10 +95,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
       // ユーザーにリッチメニューをリンク
       await client.linkRichMenuToUser(userId, richMenuAlias);
 
-      // 在室状況を返す
+      // 返事
       await client.replyMessage(event.replyToken, {
         type: "text",
-        text: roomStatusMessage,
+        text: `やあ、${currentUser.name}！\n\n${roomStatusMessage}`,
       });
     }
   }
@@ -113,5 +114,5 @@ function getRichMenuAlias(status, keyLab, keyExp, hasLab, hasExp, hasCampus) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT}`);
 });
