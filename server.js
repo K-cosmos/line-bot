@@ -17,6 +17,7 @@ const config = {
 const client = new Client(config);
 const app = express();
 const PORT = process.env.PORT || 3000;
+const imagesDir = "./Richmenu";
 
 // メンバー情報と鍵の状態を管理
 let members = [];
@@ -124,35 +125,75 @@ function getRichMenuAlias(status, keyLab, keyExp, hasLab, hasExp, hasCampus) {
   return `richmenu_${status}_${keyLab}_${keyExp}_${lab}_${exp}_${campus}`;
 }
 
-// ▼ おまけ：画像からリッチメニューを一括作成する関数
+// 画像ファイル名からリッチメニュー設定を返す関数（例）
+function getRichMenuConfig(fileName) {
+  return {
+    size: { width: 2500, height: 1686 },
+    selected: true,
+    name: `RichMenu for ${fileName}`,
+    chatBarText: "メニューを開く",
+    areas: [
+      { bounds: { x: 0, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:status1" } },
+      { bounds: { x: 0, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:status2" } },
+      // 必要に応じて追加してね
+    ]
+  };
+}
+
+// 画像フォルダの全リッチメニュー作成関数
 async function createAllRichMenus() {
-  const imagesDir = "./Richmenu";
   const imageFiles = fs.readdirSync(imagesDir).filter(file => file.endsWith(".png"));
 
   for (const file of imageFiles) {
     const filePath = path.join(imagesDir, file);
-    const richMenuConfig = {
-      size: { width: 2500, height: 1686 },
-      selected: false,
-      name: `RichMenu for ${file}`,
-      chatBarText: "メニューを開く",
-      areas: [
-        { bounds: { x: 0, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:status1" } },
-        { bounds: { x: 0, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:status2" } },
-        // 必要なら他のエリアもここに追加
-      ],
-    };
+    const richMenuConfig = getRichMenuConfig(file);
 
     try {
       const richMenuId = await client.createRichMenu(richMenuConfig);
       console.log(`✅ ${file} → RichMenu作成完了！ID: ${richMenuId}`);
+
       await client.setRichMenuImage(richMenuId, fs.createReadStream(filePath));
       console.log(`✅ ${file} → 画像アップロード完了！`);
-      // エイリアス作成例
-      // await client.createRichMenuAlias(richMenuId, `richmenu_${file.replace(".png","")}`);
     } catch (err) {
       console.error(`❌ ${file}でエラー:`, err);
     }
+  }
+}
+
+// 単一リッチメニュー作成例（必要なら呼んで使ってね）
+async function createRichMenu() {
+  const richMenuAlias = "richmenu_研究室Botメニュー"; // 好きな名前に変更してね
+  const richMenu = {
+    size: { width: 2500, height: 1686 },
+    selected: true,
+    name: "研究室Botメニュー",
+    chatBarText: "メニューを開く",
+    areas: [
+      { bounds: { x: 0, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:status1" } },
+      { bounds: { x: 0, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:status2" } },
+      { bounds: { x: 0, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:status3" } },
+      { bounds: { x: 833, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab1" } },
+      { bounds: { x: 833, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab2" } },
+      { bounds: { x: 833, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab3" } },
+      { bounds: { x: 1666, y: 1280, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab4" } },
+      { bounds: { x: 1666, y: 1408, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab5" } },
+      { bounds: { x: 1666, y: 1536, width: 833, height: 128 }, action: { type: "postback", data: "btn:lab6" } },
+      { bounds: { x: 1666, y: 1664, width: 833, height: 128 }, action: { type: "postback", data: "btn:detail" } }
+    ]
+  };
+
+  try {
+    const richMenuId = await client.createRichMenu(richMenu);
+    console.log("リッチメニュー作成完了！ID:", richMenuId);
+
+    const imagePath = path.resolve("./richmenu.png");
+    await client.setRichMenuImage(richMenuId, fs.createReadStream(imagePath));
+    console.log("画像アップロード完了！");
+
+    await client.createRichMenuAlias(richMenuId, richMenuAlias);
+    console.log(`✅ ${richMenuAlias}をエイリアスに登録完了！`);
+  } catch (err) {
+    console.error("リッチメニュー作成エラー:", err);
   }
 }
 
