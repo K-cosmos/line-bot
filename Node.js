@@ -76,6 +76,11 @@ async function createRichMenu() {
     const imagePath = path.resolve("./richmenu.png");
     await client.setRichMenuImage(richMenuId, fs.createReadStream(imagePath));
     console.log("画像アップロード完了！");
+
+    // 画像アップロード後に追加
+    await client.createRichMenuAlias(richMenuId, richMenuAlias);
+    console.log(`✅ ${richMenuAlias}をエイリアスに登録完了！`);
+
 }
 
 createRichMenu().catch(console.error);
