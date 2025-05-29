@@ -47,10 +47,11 @@ app.post("/webhook", middleware(config), async (req, res) => {
           members.push(currentUser);
 
           // 初期リッチメニューをリンク（もしあれば）
-          try {
-            await client.linkRichMenuToUser(userId, "学外_×_×_0_0_0");
-          } catch (err) {
-            console.warn("⚠️ 初期リッチメニューリンク失敗:", err.message);
+          const initialRichMenuId = richMenuIdMap["学外_×_×_0_0_0"];
+          if (initialRichMenuId) {
+            await client.linkRichMenuToUser(userId, initialRichMenuId);
+          } else {
+            console.warn("⚠️ 初期リッチメニューIDが見つからないよ！");
           }
 
           await client.replyMessage(event.replyToken, {
