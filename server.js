@@ -48,7 +48,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
           // 初期リッチメニューをリンク（もしあれば）
           try {
-            await client.linkRichMenuToUser(userId, "richmenu_学外_×_×_0_0_0");
+            await client.linkRichMenuToUser(userId, "学外_×_×_0_0_0");
           } catch (err) {
             console.warn("⚠️ 初期リッチメニューリンク失敗:", err.message);
           }
@@ -80,7 +80,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
                         roomStatusMessage + `\n\nリッチメニューで選択してね！`;
 
         try {
-          await client.linkRichMenuToUser(userId, richMenuAlias);
+          await client.linkRichMenuToUser(userId, richMenuId);
         } catch (err) {
           console.warn("⚠️ リッチメニューリンク失敗:", err.message);
         }
@@ -90,8 +90,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
           text: replyText,
         });
       }
-
-      // POSTBACKイベントなどが来たらここで処理してもいいよ（必要なら）
     }
 
     res.sendStatus(200);
@@ -157,6 +155,18 @@ try {
 } catch (err) {
   console.warn("⚠️ リッチメニューリンク失敗:", err.message);
 }
+
+function getRichMenuId(status, labKey, expKey, hasLabMembers, hasExpMembers, hasCampusMembers) {
+
+  const labNumFlag = hasLabMembers ? 1 : 0;
+  const expNumFlag = hasExpMembers ? 1 : 0;
+  const campusNumFlag = hasCampusMembers ? 1 : 0;
+
+  const key = `${status}_${labKey}_${expKey}_${labNumFlag}_${expNumFlag}_${campusNumFlag}`;
+
+  return richMenuIdMap[key]; // 見つからなければundefinedを返す
+}
+
 
 // サーバー起動
 app.listen(PORT, () => {
