@@ -79,10 +79,14 @@ app.post("/webhook", middleware(config), async (req, res) => {
         let replyText = `やあ、${currentUser.name}！\n現在のステータスは「${currentUser.status}」だよ。\n\n` +
                         roomStatusMessage + `\n\nリッチメニューで選択してね！`;
 
-        try {
-          await client.linkRichMenuToUser(userId, richMenuId);
-        } catch (err) {
-          console.warn("⚠️ リッチメニューリンク失敗:", err.message);
+        if (richMenuId) {
+          try {
+            await client.linkRichMenuToUser(userId, richMenuId);
+          } catch (err) {
+            console.warn("⚠️ リッチメニューリンク失敗:", err.message);
+          }
+        } else {
+          console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
         }
 
         await client.replyMessage(event.replyToken, {
