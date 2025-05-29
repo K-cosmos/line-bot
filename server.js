@@ -78,15 +78,25 @@ app.post("/webhook", middleware(config), async (req, res) => {
         // ユーザーに返信するテキストの例（必要に応じて変更してね）
         let replyText = `やあ、${currentUser.name}！\n現在のステータスは「${currentUser.status}」だよ。\n\n` +
                         roomStatusMessage + `\n\nリッチメニューで選択してね！`;
-
-        if (richMenuId) {
-          try {
+        
+        // webhook内のリッチメニューリンク部分の書き換え
+        try {
+          const richMenuId = getRichMenuId(
+            currentUser.status,
+            labKeyStatus,
+            expKeyStatus,
+            inLab.length > 0,
+            inExp.length > 0,
+            inCampus.length > 0
+          );
+        
+          if (richMenuId) {
             await client.linkRichMenuToUser(userId, richMenuId);
-          } catch (err) {
-            console.warn("⚠️ リッチメニューリンク失敗:", err.message);
+          } else {
+            console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
           }
-        } else {
-          console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
+        } catch (err) {
+          console.warn("⚠️ リッチメニューリンク失敗:", err.message);
         }
 
         await client.replyMessage(event.replyToken, {
@@ -139,26 +149,6 @@ const richMenuIdMap = {
   "研究室_〇_〇_1_1_0": "richmenu-ad26ff19cd30ef795ef99c36b42423c9",
   "研究室_〇_〇_1_1_1": "richmenu-73a7e28f6168b962074bc6dc2b854078",
 };
-
-// webhook内のリッチメニューリンク部分の書き換え
-try {
-  const richMenuId = getRichMenuId(
-    currentUser.status,
-    labKeyStatus,
-    expKeyStatus,
-    inLab.length > 0,
-    inExp.length > 0,
-    inCampus.length > 0
-  );
-
-  if (richMenuId) {
-    await client.linkRichMenuToUser(userId, richMenuId);
-  } else {
-    console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
-  }
-} catch (err) {
-  console.warn("⚠️ リッチメニューリンク失敗:", err.message);
-}
 
 function getRichMenuId(status, labKey, expKey, hasLabMembers, hasExpMembers, hasCampusMembers) {
 
