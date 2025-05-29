@@ -43,6 +43,14 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
       let currentUser = members.find(m => m.userId === userId);
 
+       // 初期リッチメニュー（デフォルト画像）
+        const defaultAlias = "richmenu_学外_×_×_0_0_0";
+        try {
+          await client.linkRichMenuToUser(userId, defaultAlias);
+        } catch (err) {
+          console.error("❌ 初期リッチメニューのリンクでエラー:", err);
+        }
+      
       // 初回メッセージなら名前として登録
       if (!currentUser) {
         currentUser = {
@@ -85,12 +93,16 @@ app.post("/webhook", middleware(config), async (req, res) => {
       );
 
       // ユーザーにリッチメニューをリンク
-      await client.linkRichMenuToUser(userId, richMenuAlias);
+      try {
+        await client.linkRichMenuToUser(userId, richMenuAlias);
+      } catch (err) {
+        console.error("❌ リッチメニューのリンクでエラー:", err);
+      }
 
       // 返事
       await client.replyMessage(event.replyToken, {
         type: "text",
-        text: `やあ、${currentUser.name}！\n\n${roomStatusMessage}`,
+        text: `やあ、${currentUser.name}！\nリッチメニューで選択してね！`,
       });
     }
   }
