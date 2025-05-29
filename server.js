@@ -56,7 +56,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
           await client.replyMessage(event.replyToken, {
             type: "text",
-            text: `はじめまして！「${userMessage}」として登録したよ！`,
+            text: `はじめまして！\n「${userMessage}」として登録したよ！`,
           });
           continue; // 他の処理はしないで次イベントへ
         }
@@ -75,10 +75,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
           `研究室\n${inLab.length > 0 ? inLab.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `実験室\n${inExp.length > 0 ? inExp.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `学内\n${inCampus.length > 0 ? inCampus.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}`;
-
-        // ユーザーに返信するテキストの例（必要に応じて変更してね）
-        let replyText = `やあ、${currentUser.name}！\n現在のステータスは「${currentUser.status}」だよ。\n\n` +
-                        roomStatusMessage + `\n\nリッチメニューで選択してね！`;
         
         // webhook内のリッチメニューリンク部分の書き換え
         try {
