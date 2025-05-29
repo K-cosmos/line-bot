@@ -33,9 +33,6 @@ cron.schedule("0 4 * * *", () => {
   expKeyStatus = "×";
 });
 
-// expressのjsonパーサー
-app.use(express.json());
-
 // LINE webhook受信
 app.post("/webhook", middleware(config), async (req, res) => {
   const events = req.body.events;
@@ -99,6 +96,9 @@ app.post("/webhook", middleware(config), async (req, res) => {
   }
   res.send("ok");
 });
+
+// expressのjsonパーサー
+app.use(express.json());
 
 // リッチメニューエイリアス名を決める関数
 function getRichMenuAlias(status, keyLab, keyExp, hasLab, hasExp, hasCampus) {
