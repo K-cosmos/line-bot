@@ -46,14 +46,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
           currentUser = { name: userMessage, userId, status: "学外" };
           members.push(currentUser);
 
-          // 初期リッチメニューをリンク（もしあれば）
-          const initialRichMenuId = richMenuIdMap["学外_×_×_0_0_0"];
-          if (initialRichMenuId) {
-            await client.linkRichMenuToUser(userId, initialRichMenuId);
-          } else {
-            console.warn("⚠️ 初期リッチメニューIDが見つからないよ！");
-          }
-
           await client.replyMessage(event.replyToken, {
             type: "text",
             text: `はじめまして！\n「${userMessage}」として登録したよ！`,
