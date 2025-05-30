@@ -72,7 +72,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
             type: "text",
             text: `はじめまして！\n「${userMessage}」として登録したよ！`,
           });
-          continue;
         }
 
         console.log("👥 いまのメンバーリスト:", members);
