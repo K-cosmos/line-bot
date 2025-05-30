@@ -102,12 +102,15 @@ app.post("/webhook", middleware(config), async (req, res) => {
           inCampus.length > 0
         );
 
+        console.log("🔍 richMenuId: ", richMenuId);
         console.log("🎯 getRichMenuId のキー:", `${currentUser.status}_${labKeyStatus}_${expKeyStatus}_${inLab.length > 0 ? 1 : 0}_${inExp.length > 0 ? 1 : 0}_${inCampus.length > 0 ? 1 : 0}`);
         console.log("🎯 取得した richMenuId:", richMenuId);
 
         if (richMenuId) {
           try {
+            console.log("🔗 リッチメニューをリンクするよ: ", richMenuId);
             await client.linkRichMenuToUser(userId, richMenuId);
+            console.log("✅ リッチメニューをリンクしたよ！");
             console.log("✅ リッチメニューリンク完了:", richMenuId);
           } catch (linkError) {
             console.error("⚠️ リッチメニューリンク失敗:", linkError);
