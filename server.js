@@ -64,7 +64,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
         // 初回登録
         if (!currentUser) {
           console.log("🆕 新規登録ユーザーだね！");
-          currentUser = { name: userMessage, userId, status: "学外" };
+          currentUser = { name: userMessage, userId, status: "学内" };
           members.push(currentUser);
           console.log("📝 登録完了:", currentUser);
 
