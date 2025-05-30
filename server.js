@@ -39,21 +39,34 @@ app.use((req, res, next) => {
 });
 
 // webhook受信
+// 既存のコードをベースに、以下のように大量にログを足してみる！
+
 app.post("/webhook", middleware(config), async (req, res) => {
+  console.log("🔔 /webhook にリクエストが来たよ！");
+  console.log("📦 受け取ったイベント:", JSON.stringify(req.body, null, 2));
   try {
     const events = req.body.events;
 
     for (const event of events) {
+      console.log("🟡 イベントタイプ:", event.type);
       if (event.type === "message" && event.message.type === "text") {
+        console.log("💬 テキストメッセージ:", event.message.text);
+
         const userId = event.source.userId;
+        console.log("👤 userId:", userId);
+
         const userMessage = event.message.text.trim();
+        console.log("📝 ユーザーメッセージ:", userMessage);
 
         let currentUser = members.find(m => m.userId === userId);
+        console.log("🔍 currentUser:", currentUser);
 
         // 初回登録
         if (!currentUser) {
+          console.log("🆕 新規登録ユーザーだね！");
           currentUser = { name: userMessage, userId, status: "学外" };
           members.push(currentUser);
+          console.log("📝 登録完了:", currentUser);
 
           await client.replyMessage(event.replyToken, {
             type: "text",
@@ -62,58 +75,65 @@ app.post("/webhook", middleware(config), async (req, res) => {
           continue;
         }
 
-        // メンバーごとのステータスに応じてリッチメニューを切り替える
+        console.log("👥 いまのメンバーリスト:", members);
+
         const inLab = members.filter(m => m.status === "研究室");
         const inExp = members.filter(m => m.status === "実験室");
         const inCampus = members.filter(m => m.status === "学内");
 
+        console.log("🔍 各ステータス人数: 研究室:", inLab.length, " 実験室:", inExp.length, " 学内:", inCampus.length);
+
         // 鍵の状態を更新
         labKeyStatus = inLab.length > 0 ? "〇" : "△";
         expKeyStatus = inExp.length > 0 ? "〇" : "△";
+        console.log("🔑 labKeyStatus:", labKeyStatus, " expKeyStatus:", expKeyStatus);
 
-        // メンバーの現在地リストをメッセージに
         const roomStatusMessage =
           `研究室\n${inLab.length > 0 ? inLab.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `実験室\n${inExp.length > 0 ? inExp.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `学内\n${inCampus.length > 0 ? inCampus.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}`;
 
-        try {
-          const richMenuId = getRichMenuId(
-            currentUser.status,
-            labKeyStatus,
-            expKeyStatus,
-            inLab.length > 0,
-            inExp.length > 0,
-            inCampus.length > 0
-          );
+        const richMenuId = getRichMenuId(
+          currentUser.status,
+          labKeyStatus,
+          expKeyStatus,
+          inLab.length > 0,
+          inExp.length > 0,
+          inCampus.length > 0
+        );
 
-          console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKeyStatus, " expKey=", expKeyStatus, " inLab=", inLab.length, " inExp=", inExp.length, " inCampus=", inCampus.length);
+        console.log("🎯 getRichMenuId のキー:", `${currentUser.status}_${labKeyStatus}_${expKeyStatus}_${inLab.length > 0 ? 1 : 0}_${inExp.length > 0 ? 1 : 0}_${inCampus.length > 0 ? 1 : 0}`);
+        console.log("🎯 取得した richMenuId:", richMenuId);
 
-          if (richMenuId) {
+        if (richMenuId) {
+          try {
             await client.linkRichMenuToUser(userId, richMenuId);
-            console.log("✅ リッチメニューリンク結果:", richMenuId);
-          } else {
-            console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
+            console.log("✅ リッチメニューリンク完了:", richMenuId);
+          } catch (linkError) {
+            console.error("⚠️ リッチメニューリンク失敗:", linkError);
           }
-        } catch (err) {
-          console.warn("⚠️ リッチメニューリンク失敗:", err.message);
+        } else {
+          console.warn("⚠️ リッチメニューIDが見つからなかったよ");
         }
 
         const replyText = `現在の状況だよ！\n\n${roomStatusMessage}`;
+        console.log("💌 返信メッセージ:", replyText);
+
         await client.replyMessage(event.replyToken, {
           type: "text",
           text: replyText,
         });
+      } else {
+        console.log("💤 テキストメッセージじゃなかったので無視するね！");
       }
     }
 
     res.sendStatus(200);
   } catch (error) {
-    console.error("Webhook処理でエラー:", error);
+    console.error("💥 Webhook処理でエラー:", error);
     res.sendStatus(500);
   }
 });
-
 
 // 事前にアップロード済みのリッチメニューID一覧（ファイル名に合わせたキーで管理）
 const richMenuIdMap = {
