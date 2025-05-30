@@ -29,6 +29,9 @@ cron.schedule("0 4 * * *", () => {
   expKeyStatus = "×";
 });
 
+// JSONパーサー（これWebhook前に書いとかないとダメ！）
+app.use(express.json());
+
 // webhook受信
 app.post("/webhook", middleware(config), async (req, res) => {
   try {
@@ -105,9 +108,6 @@ console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKey
     res.sendStatus(500);
   }
 });
-
-// JSONパーサー（これWebhook前に書いとかないとダメ！）
-app.use(express.json());
 
 // 事前にアップロード済みのリッチメニューID一覧（ファイル名に合わせたキーで管理）
 const richMenuIdMap = {
