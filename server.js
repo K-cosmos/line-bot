@@ -78,10 +78,13 @@ app.post("/webhook", middleware(config), async (req, res) => {
             inExp.length > 0,
             inCampus.length > 0
           );
-        
+
+console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKeyStatus, " expKey=", expKeyStatus, " inLab=", inLab.length, " inExp=", inExp.length, " inCampus=", inCampus.length);
+
+          
           if (richMenuId) {
             await client.linkRichMenuToUser(userId, richMenuId);
-            console.log("✅ リッチメニューリンク結果:", result);
+            console.log("✅ リッチメニューリンク結果:", richMenuId);
           } else {
             console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
           }
