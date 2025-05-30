@@ -81,6 +81,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
         
           if (richMenuId) {
             await client.linkRichMenuToUser(userId, richMenuId);
+            console.log("✅ リッチメニューリンク結果:", result);
           } else {
             console.warn("⚠️ リッチメニューIDが見つからない:", currentUser.status, labKeyStatus, expKeyStatus);
           }
