@@ -38,18 +38,17 @@ app.use((req, res, next) => {
 });
 
 // webhook受信
-// 既存のコードをベースに、以下のように大量にログを足してみる！
-
 app.post("/webhook", middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
 
     for (const event of events) {
+      const userId = event.source.userId;
+
       if (event.type === "message" && event.message.type === "text") {
-        const userId = event.source.userId;
         const userMessage = event.message.text.trim();
         let currentUser = members.find(m => m.userId === userId);
-    
+
         // 初回登録
         if (!currentUser) {
           currentUser = { name: userMessage, userId, status: "学内" };
@@ -61,44 +60,86 @@ app.post("/webhook", middleware(config), async (req, res) => {
           });
         }
 
-        const inLab = members.filter(m => m.status === "研究室");
-        const inExp = members.filter(m => m.status === "実験室");
-        const inCampus = members.filter(m => m.status === "学内");
+        // 鍵の状態更新
+        updateKeyStatus();
 
-        // 鍵の状態を更新
-        labKeyStatus = inLab.length > 0 ? "〇" : "△";
-        expKeyStatus = inExp.length > 0 ? "〇" : "△";
+        // 在室状況メッセージ
+        const roomStatusMessage = createRoomStatusMessage();
 
-        const roomStatusMessage =
-          `研究室\n${inLab.length > 0 ? inLab.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
-          `実験室\n${inExp.length > 0 ? inExp.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
-          `学内\n${inCampus.length > 0 ? inCampus.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}`;
-
+        // リッチメニュー更新
         const richMenuId = getRichMenuId(
           currentUser.status,
           labKeyStatus,
           expKeyStatus,
-          inLab.length > 0,
-          inExp.length > 0,
-          inCampus.length > 0
+          members.some(m => m.status === "研究室"),
+          members.some(m => m.status === "実験室"),
+          members.some(m => m.status === "学内")
         );
 
         if (richMenuId) {
-          try {
-            await client.linkRichMenuToUser(userId, richMenuId);
-          } catch (linkError) {
-            console.error("⚠️ リッチメニューリンク失敗:", linkError);
-          }
-        } else {
-          console.warn("⚠️ リッチメニューIDが見つからなかったよ");
+          await client.linkRichMenuToUser(userId, richMenuId).catch(console.error);
         }
-
-        const replyText = `現在の状況だよ！\n\n${roomStatusMessage}`;
 
         await client.replyMessage(event.replyToken, {
           type: "text",
-          text: replyText,
+          text: `現在の状況だよ！\n\n${roomStatusMessage}`,
         });
+
+      } else if (event.type === "postback") {
+        const data = event.postback.data;
+        let currentUser = members.find(m => m.userId === userId);
+
+        if (!currentUser) continue; // 未登録ならスルー
+
+        if (data.startsWith("btn:status")) {
+          // ステータス切替（現在のステータス以外の3つ）
+          const statuses = ["研究室", "実験室", "学内", "学外"];
+          const nextStatuses = statuses.filter(s => s !== currentUser.status);
+          // 適当なロジックで1つをセット（例: 先頭のやつ）
+          currentUser.status = nextStatuses[0];
+
+        } else if (data.startsWith("btn:lab")) {
+          // 鍵の状態切替
+          const num = parseInt(data.replace("btn:lab", ""), 10);
+
+          if ([1, 2].includes(num)) {
+            // 研究室の鍵
+            labKeyStatus = getNextKeyStatus(labKeyStatus);
+          } else if ([3, 4].includes(num)) {
+            // 実験室の鍵
+            expKeyStatus = getNextKeyStatus(expKeyStatus);
+          } else if ([5, 6].includes(num)) {
+            // 両方
+            labKeyStatus = getNextKeyStatus(labKeyStatus);
+            expKeyStatus = getNextKeyStatus(expKeyStatus);
+          }
+
+        } else if (data === "btn:detail") {
+          // 在室状況返信
+          const roomStatusMessage = createRoomStatusMessage();
+
+          await client.replyMessage(event.replyToken, {
+            type: "text",
+            text: `在室状況だよ！\n\n${roomStatusMessage}`,
+          });
+        }
+
+        // 鍵の状態更新（全体）
+        updateKeyStatus();
+
+        // リッチメニュー更新
+        const richMenuId = getRichMenuId(
+          currentUser.status,
+          labKeyStatus,
+          expKeyStatus,
+          members.some(m => m.status === "研究室"),
+          members.some(m => m.status === "実験室"),
+          members.some(m => m.status === "学内")
+        );
+
+        if (richMenuId) {
+          await client.linkRichMenuToUser(userId, richMenuId).catch(console.error);
+        }
       }
     }
 
@@ -108,6 +149,41 @@ app.post("/webhook", middleware(config), async (req, res) => {
     res.sendStatus(500);
   }
 });
+
+// 鍵の状態更新
+function updateKeyStatus() {
+  const inLab = members.some(m => m.status === "研究室");
+  const inExp = members.some(m => m.status === "実験室");
+  labKeyStatus = inLab ? "〇" : "△";
+  expKeyStatus = inExp ? "〇" : "△";
+}
+
+// 鍵の状態切り替え
+function getNextKeyStatus(current) {
+  const statuses = ["〇", "△", "×"];
+  const idx = statuses.indexOf(current);
+  const next = statuses[(idx + 1) % statuses.length];
+  return next;
+}
+
+// 在室状況メッセージ生成
+function createRoomStatusMessage() {
+  const inLab = members.filter(m => m.status === "研究室");
+  const inExp = members.filter(m => m.status === "実験室");
+  const inCampus = members.filter(m => m.status === "学内");
+
+  let message = "";
+  if (inLab.length > 0) {
+    message += `研究室\n${inLab.map(m => `・${m.name}`).join("\n")}\n\n`;
+  }
+  if (inExp.length > 0) {
+    message += `実験室\n${inExp.map(m => `・${m.name}`).join("\n")}\n\n`;
+  }
+  if (inCampus.length > 0) {
+    message += `学内\n${inCampus.map(m => `・${m.name}`).join("\n")}`;
+  }
+  return message.trim() || "誰もいないみたい…";
+}
 
 // 事前にアップロード済みのリッチメニューID一覧（ファイル名に合わせたキーで管理）
 const richMenuIdMap = {
