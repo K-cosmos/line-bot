@@ -29,8 +29,14 @@ cron.schedule("0 4 * * *", () => {
   expKeyStatus = "×";
 });
 
-// JSONパーサー（これWebhook前に書いとかないとダメ！）
-app.use(express.json());
+// webhookだけ express.json()を使わないようにする！
+app.use((req, res, next) => {
+  if (req.path === "/webhook") {
+    next(); // webhookはmiddlewareに任せる
+  } else {
+    express.json()(req, res, next); // それ以外はJSONパースする
+  }
+});
 
 // webhook受信
 app.post("/webhook", middleware(config), async (req, res) => {
@@ -53,10 +59,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
             type: "text",
             text: `はじめまして！\n「${userMessage}」として登録したよ！`,
           });
-          continue; // 他の処理はしないで次イベントへ
+          continue;
         }
 
-        // メンバーごとのステータスに応じてリッチメニューを切り替えるため、現在の状況を集計
+        // メンバーごとのステータスに応じてリッチメニューを切り替える
         const inLab = members.filter(m => m.status === "研究室");
         const inExp = members.filter(m => m.status === "実験室");
         const inCampus = members.filter(m => m.status === "学内");
@@ -70,8 +76,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           `研究室\n${inLab.length > 0 ? inLab.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `実験室\n${inExp.length > 0 ? inExp.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}\n\n` +
           `学内\n${inCampus.length > 0 ? inCampus.map(m => `・${m.name}`).join("\n") : "（誰もいない）"}`;
-        
-        // webhook内のリッチメニューリンク部分の書き換え
+
         try {
           const richMenuId = getRichMenuId(
             currentUser.status,
@@ -82,9 +87,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             inCampus.length > 0
           );
 
-console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKeyStatus, " expKey=", expKeyStatus, " inLab=", inLab.length, " inExp=", inExp.length, " inCampus=", inCampus.length);
+          console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKeyStatus, " expKey=", expKeyStatus, " inLab=", inLab.length, " inExp=", inExp.length, " inCampus=", inCampus.length);
 
-          
           if (richMenuId) {
             await client.linkRichMenuToUser(userId, richMenuId);
             console.log("✅ リッチメニューリンク結果:", richMenuId);
@@ -95,6 +99,7 @@ console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKey
           console.warn("⚠️ リッチメニューリンク失敗:", err.message);
         }
 
+        const replyText = `現在の状況だよ！\n\n${roomStatusMessage}`;
         await client.replyMessage(event.replyToken, {
           type: "text",
           text: replyText,
@@ -108,6 +113,7 @@ console.log("🟡 デバッグ: status=", currentUser.status, " labKey=", labKey
     res.sendStatus(500);
   }
 });
+
 
 // 事前にアップロード済みのリッチメニューID一覧（ファイル名に合わせたキーで管理）
 const richMenuIdMap = {
