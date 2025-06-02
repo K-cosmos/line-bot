@@ -53,6 +53,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
         if (!currentUser) {
           currentUser = { name: userMessage, userId, status: "学内" };
           members.push(currentUser);
+          await client.replyMessage(event.replyToken, {
+            type: "text", 
+            text: `はじめまして!\n「${userMessage}」として登録したよ!`
+          });
         }
 
         // 鍵の状態更新
