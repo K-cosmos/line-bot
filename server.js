@@ -80,11 +80,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
           await client.linkRichMenuToUser(userId, richMenuId).catch(console.error);
         }
 
-        await client.replyMessage(event.replyToken, {
-          type: "text",
-          text: `現在の状況だよ！\n\n${roomStatusMessage}`,
-        });
-
+        res.sendStatus(200); // 「OKだよ！」ってLINEに返すだけ
+        
       } else if (event.type === "postback") {
         const data = event.postback.data;
         let currentUser = members.find(m => m.userId === userId);
