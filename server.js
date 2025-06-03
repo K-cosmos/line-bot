@@ -50,31 +50,29 @@ app.post("/webhook", middleware(config), async (req, res) => {
         }
       }
 
+      // 🎯 Postback処理
       if (event.type === "postback") {
         if (!user) continue;
         const data = event.postback.data;
-
-        if (data.startsWith("btn:status")) {
+      
+        if (data.startsWith("status")) {
           const allStatuses = ["研究室", "実験室", "学内", "学外"];
-          const nextStatuses = allStatuses.filter(s => s !== user.status);
-          const index = parseInt(data.slice(-1), 10) - 1;
-          if (nextStatuses[index]) user.status = nextStatuses[index];
-
-        } else if (data.startsWith("btn:lab")) {
-          const num = parseInt(data.replace("btn:lab", ""), 10);
-          if ([1, 2].includes(num)) {
-            const options = ["〇", "△", "×"].filter(v => v !== labKey);
-            labKey = options[(num - 1) % options.length];
+          const otherStatuses = allStatuses.filter(s => s !== user.status);
+          const index = parseInt(data.replace("status", ""), 10) - 1;
+          user.status = otherStatuses[index] || user.status;
+      
+        } else if (data.startsWith("key")) {
+          const num = parseInt(data.replace("key", ""), 10);
+          if (num === 1 || num === 2) {
+            labKey = getNextStatus(labKey);
+          } else if (num === 3 || num === 4) {
+            expKey = getNextStatus(expKey);
+          } else if (num === 5 || num === 6) {
+            labKey = getNextStatus(labKey);
+            expKey = getNextStatus(expKey);
           }
-          if ([3, 4].includes(num)) {
-            const options = ["〇", "△", "×"].filter(v => v !== expKey);
-            expKey = options[(num - 3) % options.length];
-          }
-          if ([5].includes(num)) {
-            labKey = "△";
-            expKey = "△";
-          }
-        } else if (data === "btn:detail") {
+      
+        } else if (data === "detail") {
           const msg = createRoomMessage();
           await client.replyMessage(event.replyToken, {
             type: "text",
