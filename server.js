@@ -3,10 +3,8 @@ import { middleware, Client } from "@line/bot-sdk";
 import dotenv from "dotenv";
 import cron from "node-cron";
 
-// 環境変数読み込み
 dotenv.config();
 
-// LINE Bot設定
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -16,164 +14,128 @@ const client = new Client(config);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// メンバー情報と鍵の状態を管理
 let members = [];
-let labKeyStatus = "×";
-let expKeyStatus = "×";
+let labKey = "×";
+let expKey = "×";
 
-// 毎日4時にステータスと鍵をリセットするスケジュール
 cron.schedule("0 4 * * *", () => {
   members = members.map(m => ({ ...m, status: "学外" }));
-  labKeyStatus = "×";
-  expKeyStatus = "×";
+  labKey = "×";
+  expKey = "×";
 });
 
-// webhookだけ express.json()を使わないようにする！
 app.use((req, res, next) => {
-  if (req.path === "/webhook") {
-    next(); // webhookはmiddlewareに任せる
-  } else {
-    express.json()(req, res, next); // それ以外はJSONパースする
-  }
+  req.path === "/webhook" ? next() : express.json()(req, res, next);
 });
 
-// webhook受信
 app.post("/webhook", middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
 
     for (const event of events) {
       const userId = event.source.userId;
+      let user = members.find(m => m.userId === userId);
 
       if (event.type === "message" && event.message.type === "text") {
-        const userMessage = event.message.text.trim();
-        let currentUser = members.find(m => m.userId === userId);
-
-        // 初回登録
-        if (!currentUser) {
-          currentUser = { name: userMessage, userId, status: "学外" };
-          members.push(currentUser);
+        const name = event.message.text.trim();
+        if (!user) {
+          user = { name, userId, status: "学外" };
+          members.push(user);
           await client.replyMessage(event.replyToken, {
             type: "text",
-            text: `はじめまして!\n「${userMessage}」として登録したよ!`
+            text: `はじめまして！\n「${name}」として登録したよ！`
           });
         }
+      }
 
-        // 鍵の状態更新
-        updateKeyStatus();
-
-        // リッチメニュー更新
-        const richMenuId = getRichMenuId(
-          currentUser.status,
-          labKeyStatus,
-          expKeyStatus,
-          members.some(m => m.status === "研究室"),
-          members.some(m => m.status === "実験室"),
-          members.some(m => m.status === "学内")
-        );
-
-        if (richMenuId) {
-          await client.linkRichMenuToUser(userId, richMenuId).catch(console.error);
-        }
-
-      } else if (event.type === "postback") {
+      if (event.type === "postback") {
+        if (!user) continue;
         const data = event.postback.data;
-        let currentUser = members.find(m => m.userId === userId);
-
-        if (!currentUser) continue; // 未登録ならスルー
 
         if (data.startsWith("btn:status")) {
-          console.log(`🔘 ボタン押下: ステータス変更 (${currentUser.name})`);
-          const statuses = ["研究室", "実験室", "学内", "学外"];
-          const nextStatuses = statuses.filter(s => s !== currentUser.status);
-          currentUser.status = nextStatuses[0];
+          console.log(`🔘 ステータス変更 (${user.name})`);
+          const allStatuses = ["研究室", "実験室", "学内", "学外"];
+          const next = allStatuses.find(s => s !== user.status);
+          if (next) user.status = next;
 
         } else if (data.startsWith("btn:lab")) {
           const num = parseInt(data.replace("btn:lab", ""), 10);
-          console.log(`🔘 ボタン押下: 鍵変更ボタン(${num}) (${currentUser.name})`);
+          console.log(`🔘 鍵状態変更 (${num}) (${user.name})`);
 
-          if ([1, 2].includes(num)) {
-            labKeyStatus = getNextKeyStatus(labKeyStatus);
-          } else if ([3, 4].includes(num)) {
-            expKeyStatus = getNextKeyStatus(expKeyStatus);
-          } else if ([5, 6].includes(num)) {
-            labKeyStatus = getNextKeyStatus(labKeyStatus);
-            expKeyStatus = getNextKeyStatus(expKeyStatus);
+          if ([1, 2].includes(num)) labKey = getNextStatus(labKey);
+          if ([3, 4].includes(num)) expKey = getNextStatus(expKey);
+          if ([5, 6].includes(num)) {
+            labKey = getNextStatus(labKey);
+            expKey = getNextStatus(expKey);
           }
 
         } else if (data === "btn:detail") {
-          console.log(`🔘 ボタン押下: 在室状況確認 (${currentUser.name})`);
-          const roomStatusMessage = createRoomStatusMessage();
-          console.log(`在室状況メッセージ: \n${roomStatusMessage}`);
-
+          console.log(`🔘 在室状況確認 (${user.name})`);
+          const msg = createRoomMessage();
+          console.log(`📋 在室:\n${msg}`);
           await client.replyMessage(event.replyToken, {
             type: "text",
-            text: roomStatusMessage
+            text: msg
           });
         }
+      }
 
-        // 鍵の状態更新
-        updateKeyStatus();
+      // 共通処理
+      updateKeyStatus();
 
-        // リッチメニュー更新
-        const richMenuId = getRichMenuId(
-          currentUser.status,
-          labKeyStatus,
-          expKeyStatus,
-          members.some(m => m.status === "研究室"),
-          members.some(m => m.status === "実験室"),
-          members.some(m => m.status === "学内")
-        );
+      const richMenuId = getRichMenuId(
+        user?.status,
+        labKey,
+        expKey,
+        members.some(m => m.status === "研究室"),
+        members.some(m => m.status === "実験室"),
+        members.some(m => m.status === "学内")
+      );
 
-        if (richMenuId) {
-          await client.linkRichMenuToUser(userId, richMenuId).catch(console.error);
-        }
+      if (user && richMenuId) {
+        await client.linkRichMenuToUser(user.userId, richMenuId).catch(console.error);
       }
     }
 
-    res.sendStatus(200); // すべてのレスポンスはここでまとめる
-  } catch (error) {
-    console.error("💥 Webhook処理でエラー:", error);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("💥 Webhookエラー:", err);
     res.sendStatus(500);
   }
 });
 
-// 鍵の状態更新
 function updateKeyStatus() {
   const inLab = members.some(m => m.status === "研究室");
   const inExp = members.some(m => m.status === "実験室");
-  labKeyStatus = inLab ? "〇" : "△";
-  expKeyStatus = inExp ? "〇" : "△";
+  labKey = inLab ? "〇" : "△";
+  expKey = inExp ? "〇" : "△";
 }
 
-// 鍵の状態切り替え
-function getNextKeyStatus(current) {
-  const statuses = ["〇", "△", "×"];
-  const idx = statuses.indexOf(current);
-  return statuses[(idx + 1) % statuses.length];
+function getNextStatus(current) {
+  const states = ["〇", "△", "×"];
+  return states[(states.indexOf(current) + 1) % states.length];
 }
 
-// 在室状況メッセージ生成
-function createRoomStatusMessage() {
-  const inLab = members.filter(m => m.status === "研究室");
-  const inExp = members.filter(m => m.status === "実験室");
-  const inCampus = members.filter(m => m.status === "学内");
+function createRoomMessage() {
+  const groupBy = status => members.filter(m => m.status === status);
+  const lab = groupBy("研究室");
+  const exp = groupBy("実験室");
+  const campus = groupBy("学内");
 
-  let message = "";
-  if (inLab.length > 0) {
-    message += `研究室\n${inLab.map(m => `・${m.name}`).join("\n")}\n\n`;
-  }
-  if (inExp.length > 0) {
-    message += `実験室\n${inExp.map(m => `・${m.name}`).join("\n")}\n\n`;
-  }
-  if (inCampus.length > 0) {
-    message += `学内\n${inCampus.map(m => `・${m.name}`).join("\n")}`;
-  }
-  return message.trim() || "誰もいないみたい…";
+  let msg = "";
+  if (lab.length) msg += `研究室\n${lab.map(m => `・${m.name}`).join("\n")}\n\n`;
+  if (exp.length) msg += `実験室\n${exp.map(m => `・${m.name}`).join("\n")}\n\n`;
+  if (campus.length) msg += `学内\n${campus.map(m => `・${m.name}`).join("\n")}`;
+
+  return msg.trim() || "誰もいないみたい…";
 }
 
-// 事前にアップロード済みのリッチメニューID一覧
-// Rich menu ID mapping
+function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
+  if (!status) return null;
+  const filename = `${status}_${lab}_${exp}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}.png`;
+  return richMenuMapping[filename];
+}
+
 const richMenuMapping = {
   "Firstmenu.png": "richmenu-ffa1e8b916b73c0c441656ccf7c945d2",
   "学内_×_×_0_0_1.png": "richmenu-c82283b71178f0dc4757869c382deb71",
@@ -209,11 +171,6 @@ const richMenuMapping = {
   "研究室_〇_〇_1_1_0.png": "richmenu-c116e9896619786e8f0951e64abb3b13",
   "研究室_〇_〇_1_1_1.png": "richmenu-6c9110ac69cc6552a7a9e9ec2183df17"
 };
-
-function getRichMenuId(status, labKey, expKey, hasLabMembers, hasExpMembers, hasCampusMembers) {
-  const filename = `${status}_${labKey}_${expKey}_${hasLabMembers}_${hasExpMembers}_${hasCampusMembers}.png`;
-  return menuDict[filename];
-}
 
 // サーバー起動
 app.listen(PORT, () => {
