@@ -210,6 +210,14 @@ const richMenuMapping = {
   "研究室_〇_〇_1_1_1.png": "richmenu-6c9110ac69cc6552a7a9e9ec2183df17"
 };
 
+function getRichMenuId(status, labKey, expKey, hasLabMembers, hasExpMembers, hasCampusMembers) {Add commentMore actions
+  const labNumFlag = hasLabMembers ? 1 : 0;
+  const expNumFlag = hasExpMembers ? 1 : 0;
+  const campusNumFlag = hasCampusMembers ? 1 : 0;
+  const key = `${status}_${labKey}_${expKey}_${labNumFlag}_${expNumFlag}_${campusNumFlag}`;
+  return richMenuIdMap[key];
+}
+
 // サーバー起動
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
