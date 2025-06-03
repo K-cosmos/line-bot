@@ -51,10 +51,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
         // 初回登録
         if (!currentUser) {
-          currentUser = { name: userMessage, userId, status: "学内" };
+          currentUser = { name: userMessage, userId, status: "学外" };
           members.push(currentUser);
           await client.replyMessage(event.replyToken, {
-            type: "text", 
+            type: "text",
             text: `はじめまして!\n「${userMessage}」として登録したよ!`
           });
         }
@@ -83,29 +83,34 @@ app.post("/webhook", middleware(config), async (req, res) => {
         if (!currentUser) continue; // 未登録ならスルー
 
         if (data.startsWith("btn:status")) {
-  console.log(`🔘 ボタン押下: ステータス変更 (${currentUser.name})`);
-  const statuses = ["研究室", "実験室", "学内", "学外"];
-  const nextStatuses = statuses.filter(s => s !== currentUser.status);
-  currentUser.status = nextStatuses[0];
+          console.log(`🔘 ボタン押下: ステータス変更 (${currentUser.name})`);
+          const statuses = ["研究室", "実験室", "学内", "学外"];
+          const nextStatuses = statuses.filter(s => s !== currentUser.status);
+          currentUser.status = nextStatuses[0];
 
-} else if (data.startsWith("btn:lab")) {
-  const num = parseInt(data.replace("btn:lab", ""), 10);
-  console.log(`🔘 ボタン押下: 鍵変更ボタン(${num}) (${currentUser.name})`);
+        } else if (data.startsWith("btn:lab")) {
+          const num = parseInt(data.replace("btn:lab", ""), 10);
+          console.log(`🔘 ボタン押下: 鍵変更ボタン(${num}) (${currentUser.name})`);
 
-  if ([1, 2].includes(num)) {
-    labKeyStatus = getNextKeyStatus(labKeyStatus);
-  } else if ([3, 4].includes(num)) {
-    expKeyStatus = getNextKeyStatus(expKeyStatus);
-  } else if ([5, 6].includes(num)) {
-    labKeyStatus = getNextKeyStatus(labKeyStatus);
-    expKeyStatus = getNextKeyStatus(expKeyStatus);
-  }
+          if ([1, 2].includes(num)) {
+            labKeyStatus = getNextKeyStatus(labKeyStatus);
+          } else if ([3, 4].includes(num)) {
+            expKeyStatus = getNextKeyStatus(expKeyStatus);
+          } else if ([5, 6].includes(num)) {
+            labKeyStatus = getNextKeyStatus(labKeyStatus);
+            expKeyStatus = getNextKeyStatus(expKeyStatus);
+          }
 
-} else if (data === "btn:detail") {
-  console.log(`🔘 ボタン押下: 在室状況確認 (${currentUser.name})`);
-  const roomStatusMessage = createRoomStatusMessage();
-  console.log(`在室状況メッセージ: \n${roomStatusMessage}`);
-}
+        } else if (data === "btn:detail") {
+          console.log(`🔘 ボタン押下: 在室状況確認 (${currentUser.name})`);
+          const roomStatusMessage = createRoomStatusMessage();
+          console.log(`在室状況メッセージ: \n${roomStatusMessage}`);
+
+          await client.replyMessage(event.replyToken, {
+            type: "text",
+            text: roomStatusMessage
+          });
+        }
 
         // 鍵の状態更新
         updateKeyStatus();
@@ -168,48 +173,42 @@ function createRoomStatusMessage() {
 }
 
 // 事前にアップロード済みのリッチメニューID一覧
-const richMenuIdMap = {
-    "学内_×_×_0_0_1": "richmenu-22508470c3c2310e77d861160d6ed885",
-  "学内_×_〇_0_1_1": "richmenu-88a99e9ba9d1844682b6c73aa4d4c5d2",
-  "学内_△_△_0_0_1": "richmenu-9d111f17f995637b5f77083f54f1c7df",
-  "学内_△_〇_0_1_1": "richmenu-b970e9ec1e45f058f58e36d266ddcce9",
-  "学内_〇_×_1_0_1": "richmenu-d746feab30b0ad2710fd9ef11f25d6a8",
-  "学内_〇_△_1_0_1": "richmenu-3e69a591c91d77ff43872a4210a1a186",
-  "学内_〇_〇_1_1_1": "richmenu-71982997385193983fa4a14f73b11341",
-  "学外_×_×_0_0_0": "richmenu-82b5ddf49babafd555ba0f570999ba67",
-  "学外_×_×_0_0_1": "richmenu-189dd30b5107086a9224744a238578d5",
-  "学外_×_〇_0_1_0": "richmenu-e9e41f676a8666e0b90528b987cd3a15",
-  "学外_×_〇_0_1_1": "richmenu-39f861067e719a07d90af74d818ffc73",
-  "学外_△_△_0_0_0": "richmenu-eef686a9cae38f0f0bf7265628455e7a",
-  "学外_△_〇_0_1_0": "richmenu-2da181caa645de445c2f4b0adcfb1f3b",
-  "学外_△_〇_0_1_1": "richmenu-53afbc5dad60cfd4f296ffacec58cadf",
-  "学外_〇_×_1_0_0": "richmenu-3940419dca1c35632644ad6cf8034286",
-  "学外_〇_×_1_0_1": "richmenu-fa49f87ad347b80d53f9890ba4e2824c",
-  "学外_〇_△_1_0_0": "richmenu-6651b17148c6af7336e16f299802176a",
-  "学外_〇_△_1_0_1": "richmenu-0cdff27048bb380af3d8e1c61c0e5213",
-  "学外_〇_〇_1_1_0": "richmenu-10c46ccf43ff7a6fbb6d6ac264a587ef",
-  "学外_〇_〇_1_1_1": "richmenu-e1c444ea65a7888c6c2b2173c695e1e3",
-  "実験室_×_〇_0_1_0": "richmenu-ccdab58bada5fb35fa1a0e27e017d51b",
-  "実験室_×_〇_0_1_1": "richmenu-e20f675a679b4820ce8b9c33f57345da",
-  "実験室_△_〇_0_1_0": "richmenu-eef54bf8700bdafe38d077bf849ba63f",
-  "実験室_△_〇_0_1_1": "richmenu-ee4e9ab423213752d9445b0fd2105bfd",
-  "実験室_〇_〇_1_1_0": "richmenu-c6405577fdd646288d3606a8c35a572e",
-  "実験室_〇_〇_1_1_1": "richmenu-5ccdac123091330806e1dc10bb01a9fe",
-  "研究室_〇_×_1_0_0": "richmenu-5db4a6140e95c45617f76e2c7d39f228",
-  "研究室_〇_×_1_0_1": "richmenu-8c3fea54d2053b6aa95e83c4dc2691df",
-  "研究室_〇_△_1_0_0": "richmenu-da54ff92d39e69b0bbeea6b1a17c205f",
-  "研究室_〇_△_1_0_1": "richmenu-6639d26055b0d99997a15a3042c0adfd",
-  "研究室_〇_〇_1_1_0": "richmenu-3444d2a86934f0e294eb4f9324f96729",
-  "研究室_〇_〇_1_1_1": "richmenu-5ccdac123091330806e1dc10bb01a9fe",
+// Rich menu ID mapping
+const richMenuMapping = {
+  "Firstmenu.png": "richmenu-ffa1e8b916b73c0c441656ccf7c945d2",
+  "学内_×_×_0_0_1.png": "richmenu-c82283b71178f0dc4757869c382deb71",
+  "学内_×_〇_0_1_1.png": "richmenu-bb08b1ac8a41ccb1aad8d9d2764c7fa4",
+  "学内_△_△_0_0_1.png": "richmenu-fe9e762c582bff779d32cddfc9c320b4",
+  "学内_△_〇_0_1_1.png": "richmenu-29654e9d4cc267bc7f28b80ca52883c4",
+  "学内_〇_×_1_0_1.png": "richmenu-6250cd4a5dde0517afa84cc8211cc521",
+  "学内_〇_△_1_0_1.png": "richmenu-f466b6c246d8d13b1e09ee3a771776bb",
+  "学内_〇_〇_1_1_1.png": "richmenu-b7fdb6505b94c502a756ab9a638bd6ff",
+  "学外_×_×_0_0_0.png": "richmenu-8b6b88a23d313427a7bd422efce6ceb3",
+  "学外_×_×_0_0_1.png": "richmenu-c365028833875700339edbfcbd6d34a1",
+  "学外_×_〇_0_1_0.png": "richmenu-7ad7099b649528dd4e3cfbef4f91f24c",
+  "学外_×_〇_0_1_1.png": "richmenu-5e4ad3023aeb3419bd40c6ee75454779",
+  "学外_△_△_0_0_0.png": "richmenu-418668f833bee1ae7d7849a2e9b3d304",
+  "学外_△_〇_0_1_0.png": "richmenu-3d18871f6d0bd4b7d4e3b2e1df03a6d8",
+  "学外_△_〇_0_1_1.png": "richmenu-e0d875debf27f3bcedc42ae5d2a2eba8",
+  "学外_〇_×_1_0_0.png": "richmenu-c0b41b9976515984fa8cda775e48cd01",
+  "学外_〇_×_1_0_1.png": "richmenu-377fb4e9107eeaf3d2bf92d5e255aed1",
+  "学外_〇_△_1_0_0.png": "richmenu-009a667136810fcdceb3f1ea3a929839",
+  "学外_〇_△_1_0_1.png": "richmenu-0adf70c59bc191c6b4f3225d9ddf7c9c",
+  "学外_〇_〇_1_1_0.png": "richmenu-59c91b5ab19d7f90c47ae7c30e7d085a",
+  "学外_〇_〇_1_1_1.png": "richmenu-09067973db5ae5ff79060d5e03fd0f93",
+  "実験室_×_〇_0_1_0.png": "richmenu-567cbbe08b7cc649a889d9007a1a8bb1",
+  "実験室_×_〇_0_1_1.png": "richmenu-f69ed980570ec194fdaa01ba756b90ec",
+  "実験室_△_〇_0_1_0.png": "richmenu-a41b864bd3dd947f5ee27333934ce8ab",
+  "実験室_△_〇_0_1_1.png": "richmenu-818232f0ae68bfdf3857e1c7858567b5",
+  "実験室_〇_〇_1_1_0.png": "richmenu-35f1e40c0fb87d36854466e1bbd1fd68",
+  "実験室_〇_〇_1_1_1.png": "richmenu-96468795b44d76c0ec1a1b994efd1c5e",
+  "研究室_〇_×_1_0_0.png": "richmenu-a4ec26894edf98a8c1540c9130e71e74",
+  "研究室_〇_×_1_0_1.png": "richmenu-82d560f099ce7fcafdd6b2a2336f35dd",
+  "研究室_〇_△_1_0_0.png": "richmenu-0785cbdef0d3f0ae16915253dc75aacf",
+  "研究室_〇_△_1_0_1.png": "richmenu-261297f9bbe1d4760077fede78165951",
+  "研究室_〇_〇_1_1_0.png": "richmenu-c116e9896619786e8f0951e64abb3b13",
+  "研究室_〇_〇_1_1_1.png": "richmenu-6c9110ac69cc6552a7a9e9ec2183df17"
 };
-
-function getRichMenuId(status, labKey, expKey, hasLabMembers, hasExpMembers, hasCampusMembers) {
-  const labNumFlag = hasLabMembers ? 1 : 0;
-  const expNumFlag = hasExpMembers ? 1 : 0;
-  const campusNumFlag = hasCampusMembers ? 1 : 0;
-  const key = `${status}_${labKey}_${expKey}_${labNumFlag}_${expNumFlag}_${campusNumFlag}`;
-  return richMenuIdMap[key];
-}
 
 // サーバー起動
 app.listen(PORT, () => {
