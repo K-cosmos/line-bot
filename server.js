@@ -135,6 +135,13 @@ function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
   return richMenuMapping[filename];
 }
 
+// 鍵の状態を〇→×→△→〇の順に切り替える関数
+function getNextStatus(current) {
+  if (current === "〇") return "×";
+  if (current === "×") return "△";
+  return "〇";
+}
+
 const richMenuMapping = {
   "学内_×_×_0_0_1": "richmenu-3956f6ab34466a234f2b0e11319cfdc2",
   "学内_×_〇_0_1_1": "richmenu-8f6a2ababc85062d34839ae6706107d8",
