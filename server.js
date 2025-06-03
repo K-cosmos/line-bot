@@ -139,7 +139,7 @@ function createRoomMessage() {
 
 function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
   if (!status) return null;
-  const filename = `${status}_${lab}_${exp}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}.png`;
+  const filename = `${status}_${lab}_${exp}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}`;
   console.log(filename)
   return richMenuMapping[filename];
 }
