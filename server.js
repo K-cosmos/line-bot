@@ -83,26 +83,29 @@ app.post("/webhook", middleware(config), async (req, res) => {
         if (!currentUser) continue; // 未登録ならスルー
 
         if (data.startsWith("btn:status")) {
-          const statuses = ["研究室", "実験室", "学内", "学外"];
-          const nextStatuses = statuses.filter(s => s !== currentUser.status);
-          currentUser.status = nextStatuses[0];
+  console.log(`🔘 ボタン押下: ステータス変更 (${currentUser.name})`);
+  const statuses = ["研究室", "実験室", "学内", "学外"];
+  const nextStatuses = statuses.filter(s => s !== currentUser.status);
+  currentUser.status = nextStatuses[0];
 
-        } else if (data.startsWith("btn:lab")) {
-          const num = parseInt(data.replace("btn:lab", ""), 10);
-          if ([1, 2].includes(num)) {
-            labKeyStatus = getNextKeyStatus(labKeyStatus);
-          } else if ([3, 4].includes(num)) {
-            expKeyStatus = getNextKeyStatus(expKeyStatus);
-          } else if ([5, 6].includes(num)) {
-            labKeyStatus = getNextKeyStatus(labKeyStatus);
-            expKeyStatus = getNextKeyStatus(expKeyStatus);
-          }
+} else if (data.startsWith("btn:lab")) {
+  const num = parseInt(data.replace("btn:lab", ""), 10);
+  console.log(`🔘 ボタン押下: 鍵変更ボタン(${num}) (${currentUser.name})`);
 
-        } else if (data === "btn:detail") {
-          // 在室状況返信（実際に送信はしない）
-          const roomStatusMessage = createRoomStatusMessage();
-          console.log(`在室状況メッセージ: \n${roomStatusMessage}`);
-        }
+  if ([1, 2].includes(num)) {
+    labKeyStatus = getNextKeyStatus(labKeyStatus);
+  } else if ([3, 4].includes(num)) {
+    expKeyStatus = getNextKeyStatus(expKeyStatus);
+  } else if ([5, 6].includes(num)) {
+    labKeyStatus = getNextKeyStatus(labKeyStatus);
+    expKeyStatus = getNextKeyStatus(expKeyStatus);
+  }
+
+} else if (data === "btn:detail") {
+  console.log(`🔘 ボタン押下: 在室状況確認 (${currentUser.name})`);
+  const roomStatusMessage = createRoomStatusMessage();
+  console.log(`在室状況メッセージ: \n${roomStatusMessage}`);
+}
 
         // 鍵の状態更新
         updateKeyStatus();
