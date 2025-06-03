@@ -18,16 +18,14 @@ let members = [];
 let labKey = "×";
 let expKey = "×";
 
-const DEFAULT_RICHMENU_ID = "richmenu-ea3798e4868613c347c660c9354ee59f"; // ←自分で登録したリッチメニューIDに差し替えてね！
+const DEFAULT_RICHMENU_ID = "richmenu-ea3798e4868613c347c660c9354ee59f";
 
-// 4時にリセット
 cron.schedule("0 4 * * *", () => {
   members = members.map(m => ({ ...m, status: "学外" }));
   labKey = "×";
   expKey = "×";
 });
 
-// JSONボディパーサー
 app.use((req, res, next) => {
   req.path === "/webhook" ? next() : express.json()(req, res, next);
 });
@@ -40,7 +38,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
       const userId = event.source.userId;
       let user = members.find(m => m.userId === userId);
 
-      // --- 名前登録処理 ---
       if (event.type === "message" && event.message.type === "text") {
         const name = event.message.text.trim();
         if (!user) {
@@ -53,25 +50,30 @@ app.post("/webhook", middleware(config), async (req, res) => {
         }
       }
 
-      // --- Postback処理 ---
       if (event.type === "postback") {
         if (!user) continue;
         const data = event.postback.data;
 
         if (data.startsWith("btn:status")) {
           const allStatuses = ["研究室", "実験室", "学内", "学外"];
-          const next = allStatuses.find(s => s !== user.status);
-          if (next) user.status = next;
+          const nextStatuses = allStatuses.filter(s => s !== user.status);
+          const index = parseInt(data.slice(-1), 10) - 1;
+          if (nextStatuses[index]) user.status = nextStatuses[index];
 
         } else if (data.startsWith("btn:lab")) {
           const num = parseInt(data.replace("btn:lab", ""), 10);
-          if ([1, 2].includes(num)) labKey = getNextStatus(labKey);
-          if ([3, 4].includes(num)) expKey = getNextStatus(expKey);
-          if ([5, 6].includes(num)) {
-            labKey = getNextStatus(labKey);
-            expKey = getNextStatus(expKey);
+          if ([1, 2].includes(num)) {
+            const options = ["〇", "△", "×"].filter(v => v !== labKey);
+            labKey = options[(num - 1) % options.length];
           }
-
+          if ([3, 4].includes(num)) {
+            const options = ["〇", "△", "×"].filter(v => v !== expKey);
+            expKey = options[(num - 3) % options.length];
+          }
+          if ([5].includes(num)) {
+            labKey = "△";
+            expKey = "△";
+          }
         } else if (data === "btn:detail") {
           const msg = createRoomMessage();
           await client.replyMessage(event.replyToken, {
@@ -81,10 +83,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
         }
       }
 
-      // --- 鍵状態の自動更新 ---
       updateKeyStatus();
 
-      // --- 表示すべきリッチメニューIDの取得 ---
       const targetRichMenuId = user
         ? getRichMenuId(
             user.status,
@@ -96,7 +96,6 @@ app.post("/webhook", middleware(config), async (req, res) => {
           )
         : DEFAULT_RICHMENU_ID;
 
-      // --- リッチメニューの表示切替 ---
       const currentRichMenu = await client.getRichMenuIdOfUser(userId).catch(() => null);
       if (targetRichMenuId && currentRichMenu !== targetRichMenuId) {
         await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
@@ -105,22 +104,16 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("💥 Webhookエラー:", err);
+    console.error("\uD83D\uDCA5 Webhookエラー:", err);
     res.sendStatus(500);
   }
 });
 
-// --- ユーティリティ関数 ---
 function updateKeyStatus() {
   const inLab = members.some(m => m.status === "研究室");
   const inExp = members.some(m => m.status === "実験室");
   labKey = inLab ? "〇" : "△";
   expKey = inExp ? "〇" : "△";
-}
-
-function getNextStatus(current) {
-  const states = ["〇", "△", "×"];
-  return states[(states.indexOf(current) + 1) % states.length];
 }
 
 function createRoomMessage() {
@@ -144,7 +137,6 @@ function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
   return richMenuMapping[filename];
 }
 
-// --- リッチメニューIDのマッピング（省略せず全部入れてるままでOK） ---
 const richMenuMapping = {
   "学内_×_×_0_0_1": "richmenu-d36967e01144342dfbec53dd9aa69d61",
   "学内_×_〇_0_1_1": "richmenu-600af08a2f96082a4fb76afeb4474421",
