@@ -62,19 +62,20 @@ app.post("/webhook", middleware(config), async (req, res) => {
           user.status = otherStatuses[index] || user.status;
 
         } else if (data.startsWith("key")) {
-  const num = parseInt(data.replace("key", ""), 10);
-  let oldLabKey = labKey;
-  let oldExpKey = expKey;
+          const num = parseInt(data.replace("key", ""), 10);
+          let oldLabKey = labKey;
+          let oldExpKey = expKey;
 
-  if (num === 1 || num === 2) {
-    labKey = getNextStatus(labKey);
-  } else if (num === 3 || num === 4) {
-    expKey = getNextStatus(expKey);
-  } else if (num === 5 || num === 6) {
-    labKey = getNextStatus(labKey);
-    expKey = getNextStatus(expKey);
-  }
-
+          if (num === 1 || num === 2) {
+          labKey = getNextStatus(labKey);
+          } else if (num === 3 || num === 4) {
+          expKey = getNextStatus(expKey);
+          } else if (num === 5 || num === 6) {
+          labKey = getNextStatus(labKey);
+          expKey = getNextStatus(expKey);
+          }
+        }
+          
   // ボタンによる変更で通知（〇と×だけ）
   if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
     await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
