@@ -75,6 +75,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
           expKey = getNextStatus(expKey);
           }
         }
+      }
           
   // ボタンによる変更で通知（〇と×だけ）
   if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
