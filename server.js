@@ -59,8 +59,9 @@ app.post("/webhook", middleware(config), async (req, res) => {
     const allStatuses = ["研究室", "実験室", "学内", "学外"];
     const otherStatuses = allStatuses.filter(s => s !== user.status);
     const index = parseInt(data.replace("status", ""), 10) - 1;
-    user.status = otherStatuses[index] || user.status;
-
+    if (index >= 0 && index < otherStatuses.length) {
+      user.status = otherStatuses[index];
+    }
   } else if (data.startsWith("key")) {
     const num = parseInt(data.replace("key", ""), 10);
     var oldLabKey = labKey;
