@@ -178,6 +178,12 @@ async function broadcast(message) {
   }
 }
 
+function getNextStatus(current) {
+  const order = ["×", "△", "〇"];
+  const index = order.indexOf(current);
+  return order[(index + 1) % order.length];
+}
+
 const richMenuMapping = {
   "学内_×_×_0_0_1": "richmenu-d061b0c85439572436b1e3e01904fc28",
   "学内_×_〇_0_1_1": "richmenu-ca3cd610e64423345f44f3d01e9329e4",
