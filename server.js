@@ -51,50 +51,46 @@ app.post("/webhook", middleware(config), async (req, res) => {
       }
 
       // 🎯 Postback処理
-      if (event.type === "postback") {
-        if (!user) continue;
-        const data = event.postback.data;
+ if (event.type === "postback") {
+  if (!user) continue;
+  const data = event.postback.data;
 
-        if (data.startsWith("status")) {
-          const allStatuses = ["研究室", "実験室", "学内", "学外"];
-          const otherStatuses = allStatuses.filter(s => s !== user.status);
-          const index = parseInt(data.replace("status", ""), 10) - 1;
-          user.status = otherStatuses[index] || user.status;
+  if (data.startsWith("status")) {
+    const allStatuses = ["研究室", "実験室", "学内", "学外"];
+    const otherStatuses = allStatuses.filter(s => s !== user.status);
+    const index = parseInt(data.replace("status", ""), 10) - 1;
+    user.status = otherStatuses[index] || user.status;
 
-        } else if (data.startsWith("key")) {
-          const num = parseInt(data.replace("key", ""), 10);
-          let oldLabKey = labKey;
-          let oldExpKey = expKey;
+  } else if (data.startsWith("key")) {
+    const num = parseInt(data.replace("key", ""), 10);
+    var oldLabKey = labKey;
+    var oldExpKey = expKey;
 
-          if (num === 1 || num === 2) {
-          labKey = getNextStatus(labKey);
-          } else if (num === 3 || num === 4) {
-          expKey = getNextStatus(expKey);
-          } else if (num === 5 || num === 6) {
-          labKey = getNextStatus(labKey);
-          expKey = getNextStatus(expKey);
-          }
-        }
-      }
-          
-  // ボタンによる変更で通知（〇と×だけ）
-  if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
-    await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
-  }
-  if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
-    await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
+    if (num === 1 || num === 2) {
+      labKey = getNextStatus(labKey);
+    } else if (num === 3 || num === 4) {
+      expKey = getNextStatus(expKey);
+    } else if (num === 5 || num === 6) {
+      labKey = getNextStatus(labKey);
+      expKey = getNextStatus(expKey);
+    }
+
+    // 🔔 ボタンによる変更で通知（〇と×だけ）
+    if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
+      await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
+    }
+    if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
+      await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
+    }
+
+  } else if (data === "detail") {
+    const msg = createRoomMessage();
+    await client.replyMessage(event.replyToken, {
+      type: "text",
+      text: msg
+    });
   }
 }
-          }
-
-        } else if (data === "detail") {
-          const msg = createRoomMessage();
-          await client.replyMessage(event.replyToken, {
-            type: "text",
-            text: msg
-          });
-        }
-      }
 
       updateKeyStatus();
 
