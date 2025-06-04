@@ -62,26 +62,27 @@ app.post("/webhook", middleware(config), async (req, res) => {
           user.status = otherStatuses[index] || user.status;
 
         } else if (data.startsWith("key")) {
-          const getNextKeyStates = current => {
-            const options = ["〇", "×", "△"];
-            return options.filter(s => s !== current);
-          };
+  const num = parseInt(data.replace("key", ""), 10);
+  let oldLabKey = labKey;
+  let oldExpKey = expKey;
 
-          const num = parseInt(data.replace("key", ""), 10);
-          if (num === 1 || num === 2) {
-            const next = getNextKeyStates(labKey);
-            labKey = next[num - 1];
-          } else if (num === 3 || num === 4) {
-            const next = getNextKeyStates(expKey);
-            expKey = next[num - 3];
-          } else if (num === 5 || num === 6) {
-            const labNext = getNextKeyStates(labKey);
-            const expNext = getNextKeyStates(expKey);
-            const common = labNext.filter(v => expNext.includes(v));
-            if (common.length > 0) {
-              labKey = common[0];
-              expKey = common[0];
-            }
+  if (num === 1 || num === 2) {
+    labKey = getNextStatus(labKey);
+  } else if (num === 3 || num === 4) {
+    expKey = getNextStatus(expKey);
+  } else if (num === 5 || num === 6) {
+    labKey = getNextStatus(labKey);
+    expKey = getNextStatus(expKey);
+  }
+
+  // ボタンによる変更で通知（〇と×だけ）
+  if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
+    await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
+  }
+  if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
+    await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
+  }
+}
           }
 
         } else if (data === "detail") {
@@ -119,16 +120,28 @@ app.post("/webhook", middleware(config), async (req, res) => {
   }
 });
 
-function updateKeyStatus() {
+async function updateKeyStatus() {
   const inLab = members.some(m => m.status === "研究室");
   const inExp = members.some(m => m.status === "実験室");
 
-  // ボタン操作が優先なので、状態が"〇"のときだけ"△"に変更、"×"はそのまま
-  if (!inLab && labKey === "〇") labKey = "△";
-  if (!inExp && expKey === "〇") expKey = "△";
-  // 誰かがいるとき、"×"や"△"なら"〇"に変更
-  if (inLab && labKey !== "〇") labKey = "〇";
-  if (inExp && expKey !== "〇") expKey = "〇";
+  const oldLabKey = labKey;
+  const oldExpKey = expKey;
+
+  // 強制変更（誰か入った・全員出た）
+  if (inLab && (labKey === "×" || labKey === "△")) labKey = "〇";
+  else if (!inLab && labKey === "〇") labKey = "△";
+
+  if (inExp && (expKey === "×" || expKey === "△")) expKey = "〇";
+  else if (!inExp && expKey === "〇") expKey = "△";
+
+  // 通知（〇か×に変わったときだけ）
+  if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
+    await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
+  }
+
+  if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
+    await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
+  }
 }
 
 function createRoomMessage() {
@@ -150,6 +163,19 @@ function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
   const filename = `${status}_${lab}_${exp}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}`;
   console.log(filename)
   return richMenuMapping[filename];
+}
+
+async function broadcast(message) {
+  for (const m of members) {
+    try {
+      await client.pushMessage(m.userId, {
+        type: "text",
+        text: message
+      });
+    } catch (err) {
+      console.error(`📤 ${m.name}への送信失敗:`, err);
+    }
+  }
 }
 
 const richMenuMapping = {
