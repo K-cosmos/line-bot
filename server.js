@@ -56,37 +56,9 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (event.type === "postback") {
         if (!user) continue;
         const data = event.postback.data;
-
-        // 🔑 鍵ボタン処理
-        if (data.startsWith("key_lab_") || data.startsWith("key_exp_")) {
-          const [_, room, key] = data.split("_"); // 例: ["key", "lab", "〇"]
-      
-          if (key === "〇") {
-            user.status = room === "lab" ? "研究室" : "実験室";
-          } else {
-            const roomName = room === "lab" ? "研究室" : "実験室";
-            const newStatus = "学内";
-      
-            if (user.status === roomName) {
-              user.status = newStatus;
-              members.forEach(m => {
-                if (m.status === roomName) m.status = newStatus;
-              });
-            }
-      
-            // 🔒 鍵を「×」に固定する場合
-            if (key === "×") {
-              if (room === "lab") {
-                labKey = "×";
-              } else if (room === "exp") {
-                expKey = "×";
-              }
-            }
-          }
-        } else {
-          // 🔁 今まで通りの分岐（location系・exist/noexist系・notice・detailなど）
             
           switch (data) {
+            // 📍ロケーション変更
             case "location_lab":
               user.status = "研究室";
               break;
@@ -99,6 +71,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             case "location_off":
               user.status = "学外";
               break;
+          
+            // 🏠在室ステータス変更（手動）
             case "exist_lab":
               user.status = "研究室";
               break;
@@ -136,14 +110,17 @@ app.post("/webhook", middleware(config), async (req, res) => {
               user.status = "学外";
               break;
             case "noexist_off":
-              // 特に処理なし
               break;
+          
+            // 🔔通知設定
             case "notice_on":
               user.notice = true;
               break;
             case "notice_off":
               user.notice = false;
               break;
+          
+            // 📋詳細表示
             case "detail":
               const msg = createRoomMessage();
               await client.replyMessage(event.replyToken, {
@@ -151,6 +128,37 @@ app.post("/webhook", middleware(config), async (req, res) => {
                 text: msg
               });
               break;
+          
+            // 🔑鍵ボタン（研究室）
+            case "key_lab_〇":
+              user.status = "研究室";
+              break;
+            case "key_lab_△":
+            case "key_lab_×":
+              if (user.status === "研究室") {
+                user.status = "学内";
+                members.forEach(m => {
+                  if (m.status === "研究室") m.status = "学内";
+                });
+              }
+              if (data === "key_lab_×") labKey = "×";
+              break;
+          
+            // 🔑鍵ボタン（実験室）
+            case "key_exp_〇":
+              user.status = "実験室";
+              break;
+            case "key_exp_△":
+            case "key_exp_×":
+              if (user.status === "実験室") {
+                user.status = "学内";
+                members.forEach(m => {
+                  if (m.status === "実験室") m.status = "学内";
+                });
+              }
+              if (data === "key_exp_×") expKey = "×";
+              break;
+          
             default:
               break;
           }
