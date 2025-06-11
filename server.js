@@ -1,3 +1,5 @@
+// server.js
+
 import express from "express";
 import { middleware, Client } from "@line/bot-sdk";
 import dotenv from "dotenv";
@@ -20,6 +22,7 @@ let expKey = "×";
 
 const DEFAULT_RICHMENU_ID = "richmenu-ea3798e4868613c347c660c9354ee59f";
 
+// 毎日4時にステータスと鍵状況をリセット
 cron.schedule("0 4 * * *", () => {
   members = members.map(m => ({ ...m, status: "学外" }));
   labKey = "×";
@@ -41,7 +44,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (event.type === "message" && event.message.type === "text") {
         const name = event.message.text.trim();
         if (!user) {
-          user = { name, userId, status: "学外" };
+          user = { name, userId, status: "学外", notice: true };
           members.push(user);
           await client.replyMessage(event.replyToken, {
             type: "text",
@@ -50,50 +53,81 @@ app.post("/webhook", middleware(config), async (req, res) => {
         }
       }
 
-      // 🎯 Postback処理
- if (event.type === "postback") {
-  if (!user) continue;
-  const data = event.postback.data;
+      if (event.type === "postback") {
+        if (!user) continue;
+        const data = event.postback.data;
 
-  if (data.startsWith("status")) {
-    const allStatuses = ["研究室", "実験室", "学内", "学外"];
-    const otherStatuses = allStatuses.filter(s => s !== user.status);
-    const index = parseInt(data.replace("status", ""), 10) - 1;
-    if (index >= 0 && index < otherStatuses.length) {
-      user.status = otherStatuses[index];
-    }
-  } else if (data.startsWith("key")) {
-    const num = parseInt(data.replace("key", ""), 10);
-    var oldLabKey = labKey;
-    var oldExpKey = expKey;
+        switch (data) {
+          case "location_lab":
+            user.status = "研究室";
+            break;
+          case "location_exp":
+            user.status = "実験室";
+            break;
+          case "location_on":
+            user.status = "学内";
+            break;
+          case "location_off":
+            user.status = "学外";
+            break;
+          case "exist_lab":
+            user.status = "研究室";
+            break;
+          case "noexist_lab":
+            if (user.status === "研究室") {
+              user.status = "学内";
+              members.forEach(m => {
+                if (m.status === "研究室") m.status = "学内";
+              });
+            }
+            break;
+          case "exist_exp":
+            user.status = "実験室";
+            break;
+          case "noexist_exp":
+            if (user.status === "実験室") {
+              user.status = "学内";
+              members.forEach(m => {
+                if (m.status === "実験室") m.status = "学内";
+              });
+            }
+            break;
+          case "exist_on":
+            user.status = "学内";
+            break;
+          case "noexist_on":
+            if (user.status === "学内") {
+              user.status = "学外";
+              members.forEach(m => {
+                if (m.status === "学内") m.status = "学外";
+              });
+            }
+            break;
+          case "exist_off":
+            user.status = "学外";
+            break;
+          case "noexist_off":
+            // 特に処理なし
+            break;
+          case "notice_on":
+            user.notice = true;
+            break;
+          case "notice_off":
+            user.notice = false;
+            break;
+          case "detail":
+            const msg = createRoomMessage();
+            await client.replyMessage(event.replyToken, {
+              type: "text",
+              text: msg
+            });
+            break;
+          default:
+            break;
+        }
+      }
 
-    if (num === 1 || num === 2) {
-      labKey = getNextStatus(labKey);
-    } else if (num === 3 || num === 4) {
-      expKey = getNextStatus(expKey);
-    } else if (num === 5 || num === 6) {
-      labKey = getNextStatus(labKey);
-      expKey = getNextStatus(expKey);
-    }
-
-    // 🔔 ボタンによる変更で通知（〇と×だけ）
-    if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
-      await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
-    }
-    if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
-      await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
-    }
-
-  } else if (data === "detail") {
-    const msg = createRoomMessage();
-    await client.replyMessage(event.replyToken, {
-      type: "text",
-      text: msg
-    });
-  }
-}
-
-      updateKeyStatus();
+      await updateKeyStatus();
 
       const targetRichMenuId = user
         ? getRichMenuId(
@@ -102,7 +136,8 @@ app.post("/webhook", middleware(config), async (req, res) => {
             expKey,
             members.some(m => m.status === "研究室"),
             members.some(m => m.status === "実験室"),
-            members.some(m => m.status === "学内")
+            members.some(m => m.status === "学内"),
+            user.notice
           )
         : DEFAULT_RICHMENU_ID;
 
@@ -114,7 +149,7 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("\uD83D\uDCA5 Webhookエラー:", err);
+    console.error("🔥 Webhookエラー:", err);
     res.sendStatus(500);
   }
 });
@@ -126,20 +161,18 @@ async function updateKeyStatus() {
   const oldLabKey = labKey;
   const oldExpKey = expKey;
 
-  // 強制変更（誰か入った・全員出た）
   if (inLab && (labKey === "×" || labKey === "△")) labKey = "〇";
   else if (!inLab && labKey === "〇") labKey = "△";
 
   if (inExp && (expKey === "×" || expKey === "△")) expKey = "〇";
   else if (!inExp && expKey === "〇") expKey = "△";
 
-  // 通知（〇か×に変わったときだけ）
-  if (labKey !== oldLabKey && (labKey === "〇" || labKey === "×")) {
-    await broadcast(`${labKey === "〇" ? "🔓" : "🔒"} 研究室: ${labKey}`);
+  if (labKey !== oldLabKey && oldLabKey === "×" && labKey === "〇") {
+    await broadcast("研究室の鍵を借りたよ！", "lab");
   }
 
-  if (expKey !== oldExpKey && (expKey === "〇" || expKey === "×")) {
-    await broadcast(`${expKey === "〇" ? "🔓" : "🔒"} 実験室: ${expKey}`);
+  if (expKey !== oldExpKey && oldExpKey === "×" && expKey === "〇") {
+    await broadcast("実験室の鍵を借りたよ！", "exp");
   }
 }
 
@@ -157,65 +190,102 @@ function createRoomMessage() {
   return msg.trim() || "誰もいないみたい…";
 }
 
-function getRichMenuId(status, lab, exp, inLab, inExp, inCampus) {
+function getRichMenuId(status, lab, exp, inLab, inExp, inCampus, notice) {
   if (!status) return null;
-  const filename = `${status}_${lab}_${exp}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}`;
-  console.log(filename)
+  const filename = `${status}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}_${lab}_${exp}_${notice ? "on" : "off"}`;
+  console.log(filename);
   return richMenuMapping[filename];
 }
 
-async function broadcast(message) {
+async function broadcast(message, room) {
   for (const m of members) {
-    try {
-      await client.pushMessage(m.userId, {
-        type: "text",
-        text: message
-      });
-    } catch (err) {
-      console.error(`📤 ${m.name}への送信失敗:`, err);
+    if (m.notice) {
+      try {
+        await client.pushMessage(m.userId, {
+          type: "text",
+          text: message
+        });
+      } catch (err) {
+        console.error(`📤 ${m.name}への送信失敗:`, err);
+      }
     }
   }
 }
 
-function getNextStatus(current) {
-  const order = ["×", "△", "〇"];
-  const index = order.indexOf(current);
-  return order[(index + 1) % order.length];
-}
-
 const richMenuMapping = {
-  "学内_×_×_0_0_1": "richmenu-d061b0c85439572436b1e3e01904fc28",
-  "学内_×_〇_0_1_1": "richmenu-ca3cd610e64423345f44f3d01e9329e4",
-  "学内_△_△_0_0_1": "richmenu-4d1e17e58e52ee449fcbf0018ba07cd1",
-  "学内_△_〇_0_1_1": "richmenu-a61edc34aa5bba96f3e7554b017192d2",
-  "学内_〇_×_1_0_1": "richmenu-ac82c0f2ddcff48af18defa6fb133bee",
-  "学内_〇_△_1_0_1": "richmenu-2ccc0b99549294d5878cf33d3fe2cdd0",
-  "学内_〇_〇_1_1_1": "richmenu-7b5e54f8dc42767a8332b50065712e65",
-  "学外_×_×_0_0_0": "richmenu-946eb2ec0f05805e5f4f6cf2546a284c",
-  "学外_×_×_0_0_1": "richmenu-e92fa62c01bf9aed75b4bd7d41c6f501",
-  "学外_×_〇_0_1_0": "richmenu-94584c7a94cabb8b008473a30030c482",
-  "学外_×_〇_0_1_1": "richmenu-5a8d0d6b44e63960d5455977191113c2",
-  "学外_△_△_0_0_0": "richmenu-de59106ace8bab006e1f3cb840dc5c22",
-  "学外_△_〇_0_1_0": "richmenu-494aea6b42ccf09fb9ba63e73889d376",
-  "学外_△_〇_0_1_1": "richmenu-cb6d447dd92aacadeaf542b53c5c0a3f",
-  "学外_〇_×_1_0_0": "richmenu-ef2104882e8990804449d01302ae42e6",
-  "学外_〇_×_1_0_1": "richmenu-a475b568c6f73b7508b8acb027ad0454",
-  "学外_〇_△_1_0_0": "richmenu-0aef52c9bb13ed5221d39f11b75e356d",
-  "学外_〇_△_1_0_1": "richmenu-101711da79759bdbc9463e602f4ec6a2",
-  "学外_〇_〇_1_1_0": "richmenu-5fde474bf1f26261d751f7b582553e67",
-  "学外_〇_〇_1_1_1": "richmenu-f8c29dd2f91033e5fb802bbd3ad7aead",
-  "実験室_×_〇_0_1_0": "richmenu-1640776584aeb57e309bc1c69b0f74c5",
-  "実験室_×_〇_0_1_1": "richmenu-eaad9a08fd66d28f420f2f852caa80a1",
-  "実験室_△_〇_0_1_0": "richmenu-c1fdcee232365a0c3533b9a363a51892",
-  "実験室_△_〇_0_1_1": "richmenu-9bb81e9175b1ad8544065a048d689c5e",
-  "実験室_〇_〇_1_1_0": "richmenu-021e315001e8621738938a19e0f056a1",
-  "実験室_〇_〇_1_1_1": "richmenu-db06d867b03f0d1a55aeb2373765347a",
-  "研究室_〇_×_1_0_0": "richmenu-aaa702294f84faa79181a92f4b5f854e",
-  "研究室_〇_×_1_0_1": "richmenu-2bf97002516c245e80935f7227275627",
-  "研究室_〇_△_1_0_0": "richmenu-d4d1ed39e2e5e09a8cecd62223b5c9f6",
-  "研究室_〇_△_1_0_1": "richmenu-fdb559a4329d4be195dd41c63326db50",
-  "研究室_〇_〇_1_1_0": "richmenu-97d9f830537c1f74f1a117f6f3fb69df",
-  "研究室_〇_〇_1_1_1": "richmenu-17993cc6c670e9fb992fb67f5c19eb78",
+  // ここに新しいリッチメニューのマッピングを追加してください
+  "学内_0_0_1_×_×_off": "richmenu-20da175cbfc9d116cce4266ede84e914",
+  "学内_0_0_1_×_×_on": "richmenu-8514c2d8e1802d91f7305649fbe32004",
+  "学内_0_0_1_×_△_off": "richmenu-1afe35a40d284269ad3800adbf1be129",
+  "学内_0_0_1_×_△_on": "richmenu-b62cb7b521f1798b7136eeaadfee856f",
+  "学内_0_0_1_△_×_off": "richmenu-c6cc0f3feae587b3a9217218e44a0758",
+  "学内_0_0_1_△_×_on": "richmenu-67c4bc7e155953b37f65ef0612e9faa9",
+  "学内_0_0_1_△_△_off": "richmenu-f3f438df3cc1340d5d32e3c102ed3a10",
+  "学内_0_0_1_△_△_on": "richmenu-6bf3a6cc90f93b537e137883fc610f64",
+  "学内_0_1_1_×_〇_off": "richmenu-1c6219deefb2935329090ad8fb025956",
+  "学内_0_1_1_×_〇_on": "richmenu-0e29adb11f5c132e346bfbc83516bac9",
+  "学内_0_1_1_△_〇_off": "richmenu-3f6b7b3680238aaf41b0bb9e56d8edb0",
+  "学内_0_1_1_△_〇_on": "richmenu-b171ad611e3089878b7e683e9852dffc",
+  "学内_1_0_1_〇_×_off": "richmenu-2b83f9c8f4a28af049bb23f79bc29f5c",
+  "学内_1_0_1_〇_×_on": "richmenu-64e09da88ad4b16efcd8389e569ca8ce",
+  "学内_1_0_1_〇_△_off": "richmenu-32886bbd79a6e86fdb211f103308c7e0",
+  "学内_1_0_1_〇_△_on": "richmenu-4098e26001bb8c41b41cd9b4c34eb240",
+  "学内_1_1_1_〇_〇_off": "richmenu-7c00476c52d8a80da77d8024e1c94407",
+  "学内_1_1_1_〇_〇_on": "richmenu-3e69037c3768a4e857b483439f5f14c3",
+  "学外_0_0_0_×_×_off": "richmenu-7a5c81cb05f003c566aa7dc86011b679",
+  "学外_0_0_0_×_×_on": "richmenu-173ae13f9be4b3e5c5bc37850763e5d9",
+  "学外_0_0_1_×_×_off": "richmenu-a53045e936c9e690f6bd3c0b59abdce0",
+  "学外_0_0_1_×_×_on": "richmenu-57a8557c58e8e06b175ca5e97a1a8f95",
+  "学外_0_0_1_×_△_off": "richmenu-e28322719c44b19724bbdfe9c21768d4",
+  "学外_0_0_1_×_△_on": "richmenu-1ebf108aaf807f652c13325d6b645b38",
+  "学外_0_0_1_△_×_off": "richmenu-e827b96c1541e83180df89815e6b5a20",
+  "学外_0_0_1_△_×_on": "richmenu-a20df2a42f87e29b8353b71d1dfe1189",
+  "学外_0_0_1_△_△_off": "richmenu-36fa0a3763b71dde2729afc6bd9d1a72",
+  "学外_0_0_1_△_△_on": "richmenu-f658b6f7d2bcd36d3d74526991bdc22d",
+  "学外_0_1_0_×_〇_off": "richmenu-808851070090034375d783ea82677757",
+  "学外_0_1_0_×_〇_on": "richmenu-36d751d6ed1db4a8eec4fa3e43cba467",
+  "学外_0_1_0_△_〇_off": "richmenu-4bc263290e572e9167cb2acf5896fad8",
+  "学外_0_1_0_△_〇_on": "richmenu-738650684734452f7b3ac581b061c61f",
+  "学外_0_1_1_×_〇_off": "richmenu-5a3e779a1bf23fd32db656ab382168e2",
+  "学外_0_1_1_×_〇_on": "richmenu-cc52a1749dd04933b83c146c4021cb4a",
+  "学外_0_1_1_△_〇_off": "richmenu-c5a4a63fe4dd75ec8091c9fad8820c1e",
+  "学外_0_1_1_△_〇_on": "richmenu-5f7834efec3a56bbc1ac79a114a723d8",
+  "学外_1_0_0_〇_×_off": "richmenu-90649a1dbbc203a0bf529b2dc252969f",
+  "学外_1_0_0_〇_×_on": "richmenu-022258e7d1e3ae3a751ecc7a4afecebf",
+  "学外_1_0_0_〇_△_off": "richmenu-fdbf65739828b27356623d69b88326df",
+  "学外_1_0_0_〇_△_on": "richmenu-5a3f7453631672d994839264141f116b",
+  "学外_1_0_1_〇_×_off": "richmenu-e33c0a198ce062b2fd0a5099365da644",
+  "学外_1_0_1_〇_×_on": "richmenu-92eef384599e2fbfc94111753add6ead",
+  "学外_1_0_1_〇_△_off": "richmenu-6a910ced0df56d344f1b2e665fe622ae",
+  "学外_1_0_1_〇_△_on": "richmenu-b63e4d872e1ea77e93ad511af4711a9e",
+  "学外_1_1_0_〇_〇_off": "richmenu-726db7ccf2e3ef479356a4c84f154e36",
+  "学外_1_1_0_〇_〇_on": "richmenu-6a3a3533b12cea02db1c4335739e5a3f",
+  "学外_1_1_1_〇_〇_off": "richmenu-c1d2f4b7da1633cde7cfe73804d5965d",
+  "学外_1_1_1_〇_〇_on": "richmenu-89e8417606e3472cfca02c705e64eddb",
+  "実験室_0_1_0_×_〇_off": "richmenu-fe125bbb1b9d556c10b211332227fb31",
+  "実験室_0_1_0_×_〇_on": "richmenu-81372045e60ce766b9b9321a5ab73c32",
+  "実験室_0_1_0_△_〇_off": "richmenu-68060cf1abf320aeb3d5c7fec491588e",
+  "実験室_0_1_0_△_〇_on": "richmenu-ecccc650e93123309a1a236c93312c5f",
+  "実験室_0_1_1_×_〇_off": "richmenu-805ab62771defaa586894f52f8073bf2",
+  "実験室_0_1_1_×_〇_on": "richmenu-4f8c3c0d3488487ca77b336811bdd668",
+  "実験室_0_1_1_△_〇_off": "richmenu-28c1cde5482d9609d3964fd816cab8b3",
+  "実験室_0_1_1_△_〇_on": "richmenu-c4b7035b0097f27611cefe9160cdeee7",
+  "実験室_1_1_0_〇_〇_off": "richmenu-13e4899440bfca63df664f99cea480c2",
+  "実験室_1_1_0_〇_〇_on": "richmenu-5a2f855291af6001893936f842ce0234",
+  "実験室_1_1_1_〇_〇_off": "richmenu-647f45aa3d725dced0063f6b6b1fb495",
+  "実験室_1_1_1_〇_〇_on": "richmenu-f69868216f74d25d2e25f24c2a32b25b",
+  "研究室_1_0_0_〇_×_off": "richmenu-a274901b17b47dc94f1aa73d3b733936",
+  "研究室_1_0_0_〇_×_on": "richmenu-ead6cea37a4eeacf030f87974a9cd467",
+  "研究室_1_0_0_〇_△_off": "richmenu-85142c7f499f90f4ea2e7b79265feb35",
+  "研究室_1_0_0_〇_△_on": "richmenu-a21900cbd2327b8dba85d06c9b778a87",
+  "研究室_1_0_1_〇_×_off": "richmenu-a6a84fb6960129ace01e9e77147f8118",
+  "研究室_1_0_1_〇_×_on": "richmenu-4e74dfca57dc1a4b71ea30e4c37920b6",
+  "研究室_1_0_1_〇_△_off": "richmenu-4e4790aa47116660af6c12d9334387cc",
+  "研究室_1_0_1_〇_△_on": "richmenu-6467a05b7b7d4f7be1294b8ebab678a4",
+  "研究室_1_1_0_〇_〇_off": "richmenu-87106076637971cdbcee6624d9c082cb",
+  "研究室_1_1_0_〇_〇_on": "richmenu-6eacb9878e55b8095a51bd2a9ad8ebb2",
+  "研究室_1_1_1_〇_〇_off": "richmenu-eaab91e6fc1edd7336821782a0575bbf",
+  "研究室_1_1_1_〇_〇_on": "richmenu-2616ace51e4c79712fe4b0b0fb03c448",
 };
 
 // --- サーバー起動 ---
