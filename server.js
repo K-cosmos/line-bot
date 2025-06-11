@@ -217,11 +217,11 @@ async function updateKeyStatus() {
   else if (!inExp && expKey === "〇") expKey = "△";
 
   if (labKey !== oldLabKey && oldLabKey === "×" && labKey === "〇") {
-    await broadcast("研究室の鍵を借りたよ！", "lab");
+    await broadcast("研究室の鍵を取ったよ！", "lab");
   }
 
   if (expKey !== oldExpKey && oldExpKey === "×" && expKey === "〇") {
-    await broadcast("実験室の鍵を借りたよ！", "exp");
+    await broadcast("実験室の鍵を取ったよ！", "exp");
   }
 }
 
@@ -242,7 +242,7 @@ function createRoomMessage() {
 function getRichMenuId(status, lab, exp, inLab, inExp, inCampus, notice) {
   if (!status) return null;
   const filename = `${status}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}_${lab}_${exp}_${notice ? "on" : "off"}`;
-  console.log(filename);
+//  console.log(filename);
   return richMenuMapping[filename];
 }
 
