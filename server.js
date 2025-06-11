@@ -86,78 +86,79 @@ app.post("/webhook", middleware(config), async (req, res) => {
         } else {
           // 🔁 今まで通りの分岐（location系・exist/noexist系・notice・detailなど）
             
-        switch (data) {
-          case "location_lab":
-            user.status = "研究室";
-            break;
-          case "location_exp":
-            user.status = "実験室";
-            break;
-          case "location_on":
-            user.status = "学内";
-            break;
-          case "location_off":
-            user.status = "学外";
-            break;
-          case "exist_lab":
-            user.status = "研究室";
-            break;
-          case "noexist_lab":
-            if (user.status === "研究室") {
+          switch (data) {
+            case "location_lab":
+              user.status = "研究室";
+              break;
+            case "location_exp":
+              user.status = "実験室";
+              break;
+            case "location_on":
               user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "研究室") m.status = "学内";
-              });
-            }
-            break;
-          case "exist_exp":
-            user.status = "実験室";
-            break;
-          case "noexist_exp":
-            if (user.status === "実験室") {
-              user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "実験室") m.status = "学内";
-              });
-            }
-            break;
-          case "exist_on":
-            user.status = "学内";
-            break;
-          case "noexist_on":
-            if (user.status === "学内") {
+              break;
+            case "location_off":
               user.status = "学外";
-              members.forEach(m => {
-                if (m.status === "学内") m.status = "学外";
+              break;
+            case "exist_lab":
+              user.status = "研究室";
+              break;
+            case "noexist_lab":
+              if (user.status === "研究室") {
+                user.status = "学内";
+                members.forEach(m => {
+                  if (m.status === "研究室") m.status = "学内";
+                });
+              }
+              break;
+            case "exist_exp":
+              user.status = "実験室";
+              break;
+            case "noexist_exp":
+              if (user.status === "実験室") {
+                user.status = "学内";
+                members.forEach(m => {
+                  if (m.status === "実験室") m.status = "学内";
+                });
+              }
+              break;
+            case "exist_on":
+              user.status = "学内";
+              break;
+            case "noexist_on":
+              if (user.status === "学内") {
+                user.status = "学外";
+                members.forEach(m => {
+                  if (m.status === "学内") m.status = "学外";
+                });
+              }
+              break;
+            case "exist_off":
+              user.status = "学外";
+              break;
+            case "noexist_off":
+              // 特に処理なし
+              break;
+            case "notice_on":
+              user.notice = true;
+              break;
+            case "notice_off":
+              user.notice = false;
+              break;
+            case "detail":
+              const msg = createRoomMessage();
+              await client.replyMessage(event.replyToken, {
+                type: "text",
+                text: msg
               });
-            }
-            break;
-          case "exist_off":
-            user.status = "学外";
-            break;
-          case "noexist_off":
-            // 特に処理なし
-            break;
-          case "notice_on":
-            user.notice = true;
-            break;
-          case "notice_off":
-            user.notice = false;
-            break;
-          case "detail":
-            const msg = createRoomMessage();
-            await client.replyMessage(event.replyToken, {
-              type: "text",
-              text: msg
-            });
-            break;
-          default:
-            break;
+              break;
+            default:
+              break;
+          }
         }
-      }
 
       await updateKeyStatus();
-
+      }
+      
       const targetRichMenuId = user
         ? getRichMenuId(
             user.status,
