@@ -56,132 +56,131 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (event.type === "postback") {
         if (!user) continue;
         const data = event.postback.data;
-            
-          switch (data) {
-            // 📍ロケーション変更
-            case "location_lab":
-              user.status = "研究室";
-              break;
-            case "location_exp":
-              user.status = "実験室";
-              break;
-            case "location_on":
+
+        switch (data) {
+          // 📍ロケーション変更
+          case "location_lab":
+            user.status = "研究室";
+            break;
+          case "location_exp":
+            user.status = "実験室";
+            break;
+          case "location_on":
+            user.status = "学内";
+            break;
+          case "location_off":
+            user.status = "学外";
+            break;
+
+          // 🏠在室ステータス変更（手動）
+          case "exist_lab":
+            user.status = "研究室";
+            break;
+          case "noexist_lab":
+            if (user.status === "研究室") {
               user.status = "学内";
-              break;
-            case "location_off":
-              user.status = "学外";
-              break;
-          
-            // 🏠在室ステータス変更（手動）
-            case "exist_lab":
-              user.status = "研究室";
-              break;
-            case "noexist_lab":
-              if (user.status === "研究室") {
-                user.status = "学内";
-                members.forEach(m => {
-                  if (m.status === "研究室") m.status = "学内";
-                });
-              }
-              break;
-            case "exist_exp":
-              user.status = "実験室";
-              break;
-            case "noexist_exp":
-              if (user.status === "実験室") {
-                user.status = "学内";
-                members.forEach(m => {
-                  if (m.status === "実験室") m.status = "学内";
-                });
-              }
-              break;
-            case "exist_on":
-              user.status = "学内";
-              break;
-            case "noexist_on":
-              if (user.status === "学内") {
-                user.status = "学外";
-                members.forEach(m => {
-                  if (m.status === "学内") m.status = "学外";
-                });
-              }
-              break;
-            case "exist_off":
-              user.status = "学外";
-              break;
-            case "noexist_off":
-              break;
-          
-            // 🔔通知設定
-            case "notice_on":
-              user.notice = true;
-              break;
-            case "notice_off":
-              user.notice = false;
-              break;
-          
-            // 📋詳細表示
-            case "detail":
-              const msg = createRoomMessage();
-              await client.replyMessage(event.replyToken, {
-                type: "text",
-                text: msg
+              members.forEach(m => {
+                if (m.status === "研究室") m.status = "学内";
               });
-              break;
-          
-            // 🔑鍵ボタン（研究室）
-            case "key_lab_〇":
-              user.status = "研究室";
-              break;
-            case "key_lab_△":
-            case "key_lab_×":
-              if (user.status === "研究室") {
-                user.status = "学内";
-                members.forEach(m => {
-                  if (m.status === "研究室") m.status = "学内";
-                });
-              }
-              if (data === "key_lab_×") labKey = "×";
-              break;
-          
-            // 🔑鍵ボタン（実験室）
-            case "key_exp_〇":
-              user.status = "実験室";
-              break;
-            case "key_exp_△":
-            case "key_exp_×":
-              if (user.status === "実験室") {
-                user.status = "学内";
-                members.forEach(m => {
-                  if (m.status === "実験室") m.status = "学内";
-                });
-              }
-              if (data === "key_exp_×") expKey = "×";
-              break;
-          
-            default:
-              break;
+            }
+            break;
+          case "exist_exp":
+            user.status = "実験室";
+            break;
+          case "noexist_exp":
+            if (user.status === "実験室") {
+              user.status = "学内";
+              members.forEach(m => {
+                if (m.status === "実験室") m.status = "学内";
+              });
+            }
+            break;
+          case "exist_on":
+            user.status = "学内";
+            break;
+          case "noexist_on":
+            if (user.status === "学内") {
+              user.status = "学外";
+              members.forEach(m => {
+                if (m.status === "学内") m.status = "学外";
+              });
+            }
+            break;
+          case "exist_off":
+            user.status = "学外";
+            break;
+          case "noexist_off":
+            break;
+
+          // 🔔通知設定
+          case "notice_on":
+            user.notice = true;
+            break;
+          case "notice_off":
+            user.notice = false;
+            break;
+
+          // 📋詳細表示
+          case "detail": {
+            const msg = createRoomMessage();
+            await client.replyMessage(event.replyToken, {
+              type: "text",
+              text: msg
+            });
+            break;
           }
+
+          // 🔑鍵ボタン（研究室）
+          case "key_lab_〇":
+            user.status = "研究室";
+            break;
+          case "key_lab_△":
+          case "key_lab_×":
+            if (user.status === "研究室") {
+              user.status = "学内";
+              members.forEach(m => {
+                if (m.status === "研究室") m.status = "学内";
+              });
+            }
+            if (data === "key_lab_×") labKey = "×";
+            break;
+
+          // 🔑鍵ボタン（実験室）
+          case "key_exp_〇":
+            user.status = "実験室";
+            break;
+          case "key_exp_△":
+          case "key_exp_×":
+            if (user.status === "実験室") {
+              user.status = "学内";
+              members.forEach(m => {
+                if (m.status === "実験室") m.status = "学内";
+              });
+            }
+            if (data === "key_exp_×") expKey = "×";
+            break;
+
+          default:
+            break;
         }
 
-      await updateKeyStatus();
-      }
-      
-      const targetRichMenuId = user
-        ? getRichMenuId(
-            user.status,
-            labKey,
-            expKey,
-            members.some(m => m.status === "研究室"),
-            members.some(m => m.status === "実験室"),
-            members.some(m => m.status === "学内"),
-            user.notice
-          )
-        : DEFAULT_RICHMENU_ID;
+        // postbackが来たときのみ：鍵処理とリッチメニュー更新
+        await updateKeyStatus();
 
-      const currentRichMenu = await client.getRichMenuIdOfUser(userId).catch(() => null);
-      if (targetRichMenuId && currentRichMenu !== targetRichMenuId) {
-        await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
+        const targetRichMenuId = getRichMenuId(
+          user.status,
+          labKey,
+          expKey,
+          members.some(m => m.status === "研究室"),
+          members.some(m => m.status === "実験室"),
+          members.some(m => m.status === "学内"),
+          user.notice
+        );
+
+        const currentRichMenu = await client.getRichMenuIdOfUser(userId).catch(() => null);
+        if (targetRichMenuId && currentRichMenu !== targetRichMenuId) {
+          await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
+        }
       }
     }
 
