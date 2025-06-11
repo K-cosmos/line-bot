@@ -57,6 +57,35 @@ app.post("/webhook", middleware(config), async (req, res) => {
         if (!user) continue;
         const data = event.postback.data;
 
+        // 🔑 鍵ボタン処理
+        if (data.startsWith("key_lab_") || data.startsWith("key_exp_")) {
+          const [_, room, key] = data.split("_"); // 例: ["key", "lab", "〇"]
+      
+          if (key === "〇") {
+            user.status = room === "lab" ? "研究室" : "実験室";
+          } else {
+            const roomName = room === "lab" ? "研究室" : "実験室";
+            const newStatus = "学内";
+      
+            if (user.status === roomName) {
+              user.status = newStatus;
+              members.forEach(m => {
+                if (m.status === roomName) m.status = newStatus;
+              });
+            }
+      
+            // 🔒 鍵を「×」に固定する場合
+            if (key === "×") {
+              if (room === "lab") {
+                labKey = "×";
+              } else if (room === "exp") {
+                expKey = "×";
+              }
+            }
+          }
+        } else {
+          // 🔁 今まで通りの分岐（location系・exist/noexist系・notice・detailなど）
+            
         switch (data) {
           case "location_lab":
             user.status = "研究室";
