@@ -142,7 +142,13 @@ app.post("/webhook", middleware(config), async (req, res) => {
                 if (m.status === "研究室") m.status = "学内";
               });
             }
-            if (data === "key_lab_×") labKey = "×";
+            if (data === "key_lab_×") {
+              const anyoneInside = members.some(m =>
+                m.userId !== userId &&
+                (m.status === "研究室" || m.status === "学内" || m.status === "実験室")
+              );
+              labKey = anyoneInside ? "△" : "×";
+            }
             break;
 
           // 🔑鍵ボタン（実験室）
@@ -157,7 +163,13 @@ app.post("/webhook", middleware(config), async (req, res) => {
                 if (m.status === "実験室") m.status = "学内";
               });
             }
-            if (data === "key_exp_×") expKey = "×";
+            if (data === "key_exp_×") {
+              const anyoneInside = members.some(m =>
+                m.userId !== userId &&
+                (m.status === "実験室" || m.status === "学内" || m.status === "研究室")
+              );
+              expKey = anyoneInside ? "△" : "×";
+            }
             break;
 
           default:
