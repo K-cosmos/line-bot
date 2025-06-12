@@ -4,8 +4,14 @@ import express from "express";
 import { middleware, Client } from "@line/bot-sdk";
 import dotenv from "dotenv";
 import cron from "node-cron";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -16,15 +22,15 @@ const client = new Client(config);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-let members = [];
 let labKey = "×";
 let expKey = "×";
-
 const DEFAULT_RICHMENU_ID = "richmenu-ea3798e4868613c347c660c9354ee59f";
 
-// 毎日4時にステータスと鍵状況をリセット
-cron.schedule("0 4 * * *", () => {
-  members = members.map(m => ({ ...m, status: "学外" }));
+/** 毎日4時に全員ステータスを「学外」にリセット＆鍵も×に */
+cron.schedule("0 4 * * *", async () => {
+  await supabase
+    .from("members")
+    .update({ status: "学外" });
   labKey = "×";
   expKey = "×";
 });
@@ -39,136 +45,125 @@ app.post("/webhook", middleware(config), async (req, res) => {
 
     for (const event of events) {
       const userId = event.source.userId;
-      let user = members.find(m => m.userId === userId);
 
-      if (event.type === "message" && event.message.type === "text") {
+      // ✅ Supabaseからユーザー取得
+      const { data: user, error } = await supabase
+        .from("members")
+        .select("*")
+        .eq("userId", userId)
+        .single();
+
+      let me = user;
+
+      // ✳️ 新規登録
+      if (!me && event.type === "message" && event.message.type === "text") {
         const name = event.message.text.trim();
-        if (!user) {
-          user = { name, userId, status: "学外", notice: true };
-          members.push(user);
-          await client.replyMessage(event.replyToken, {
-            type: "text",
-            text: `はじめまして！\n「${name}」として登録したよ！`
-          });
-        }
+        const { data: newUser } = await supabase
+          .from("members")
+          .insert([{ name, userId, status: "学外", notice: true }])
+          .single();
+        me = newUser;
+        await client.replyMessage(event.replyToken, {
+          type: "text",
+          text: `はじめまして！\n「${name}」として登録したよ！`,
+        });
       }
+      if (!me) continue;
 
       if (event.type === "postback") {
-        if (!user) continue;
         const data = event.postback.data;
 
+        // ステータス更新用フラグ
+        let updatedFields = {};
+
         switch (data) {
-          // 📍ロケーション変更
-          case "location_lab":
-            user.status = "研究室";
-            break;
-          case "location_exp":
-            user.status = "実験室";
-            break;
-          case "location_on":
-            user.status = "学内";
-            break;
-          case "location_off":
-            user.status = "学外";
-            break;
+          // 🌏 ロケーション変更
+          case "location_lab": updatedFields.status = "研究室"; break;
+          case "location_exp": updatedFields.status = "実験室"; break;
+          case "location_on":  updatedFields.status = "学内"; break;
+          case "location_off": updatedFields.status = "学外"; break;
 
-          // 🏠在室ステータス変更（手動）
-          case "exist_lab":
-            user.status = "研究室";
-            break;
+          // 🏠 手動在室変更
+          case "exist_lab":    updatedFields.status = "研究室"; break;
           case "noexist_lab":
-            if (user.status === "研究室") {
-              user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "研究室") m.status = "学内";
-              });
+            if (me.status === "研究室") {
+              updatedFields.status = "学内";
+              await supabase
+                .from("members")
+                .update({ status: "学内" })
+                .eq("status", "研究室");
             }
             break;
-          case "exist_exp":
-            user.status = "実験室";
-            break;
+          case "exist_exp":    updatedFields.status = "実験室"; break;
           case "noexist_exp":
-            if (user.status === "実験室") {
-              user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "実験室") m.status = "学内";
-              });
+            if (me.status === "実験室") {
+              updatedFields.status = "学内";
+              await supabase
+                .from("members")
+                .update({ status: "学内" })
+                .eq("status", "実験室");
             }
             break;
-          case "exist_on":
-            user.status = "学内";
-            break;
+          case "exist_on":     updatedFields.status = "学内"; break;
           case "noexist_on":
-            if (user.status === "学内") {
-              user.status = "学外";
-              members.forEach(m => {
-                if (m.status === "学内") m.status = "学外";
-              });
+            if (me.status === "学内") {
+              updatedFields.status = "学外";
+              await supabase
+                .from("members")
+                .update({ status: "学外" })
+                .eq("status", "学内");
             }
             break;
-          case "exist_off":
-            user.status = "学外";
-            break;
-          case "noexist_off":
-            break;
+          case "exist_off":    updatedFields.status = "学外"; break;
+          case "noexist_off":  break;
 
-          // 🔔通知設定
-          case "notice_on":
-            user.notice = true;
-            break;
-          case "notice_off":
-            user.notice = false;
-            break;
+          // 🔔 通知設定
+          case "notice_on":  updatedFields.notice = true; break;
+          case "notice_off": updatedFields.notice = false; break;
 
-          // 📋詳細表示
+          // 📋 詳細表示
           case "detail": {
-            const msg = createRoomMessage();
+            const { data: all } = await supabase.from("members").select("name,status");
             await client.replyMessage(event.replyToken, {
               type: "text",
-              text: msg
+              text: createRoomMessage(all),
             });
             break;
           }
 
-          // 🔑鍵ボタン（研究室）
-          case "key_lab_〇":
-            user.status = "研究室";
-            break;
+          // 🔑 鍵ボタン（研究室）
+          case "key_lab_〇": updatedFields.status = "研究室"; break;
           case "key_lab_△":
           case "key_lab_×":
-            if (user.status === "研究室") {
-              user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "研究室") m.status = "学内";
-              });
+            if (me.status === "研究室") {
+              updatedFields.status = "学内";
+              await supabase
+                .from("members")
+                .update({ status: "学内" })
+                .eq("status", "研究室");
             }
             if (data === "key_lab_×") {
-              const anyoneInside = members.some(m =>
-                m.userId !== userId &&
-                (m.status === "研究室" || m.status === "学内" || m.status === "実験室")
-              );
-              labKey = anyoneInside ? "△" : "×";
+              const { data: all } = await supabase.from("members").select("status");
+              const stillInside = all.some(u => u.status !== "学外");
+              labKey = stillInside ? "△" : "×";
             }
             break;
 
-          // 🔑鍵ボタン（実験室）
-          case "key_exp_〇":
-            user.status = "実験室";
-            break;
+          // 🔑 鍵ボタン（実験室）
+          case "key_exp_〇": updatedFields.status = "実験室"; break;
           case "key_exp_△":
           case "key_exp_×":
-            if (user.status === "実験室") {
-              user.status = "学内";
-              members.forEach(m => {
-                if (m.status === "実験室") m.status = "学内";
-              });
+            if (me.status === "実験室") {
+              updatedFields.status = "学内";
+              await supabase
+                .from("members")
+                .update({ status: "学内" })
+                .eq("status", "実験室");
             }
             if (data === "key_exp_×") {
-              const anyoneInside = members.some(m =>
-                m.userId !== userId &&
-                (m.status === "実験室" || m.status === "学内" || m.status === "研究室")
-              );
-              expKey = anyoneInside ? "△" : "×";
+              const { data: all } = await supabase.from("members").select("status");
+              const stillInside = all.some(u => u.status !== "学外");
+              expKey = stillInside ? "△" : "×";
             }
             break;
 
@@ -176,93 +171,96 @@ app.post("/webhook", middleware(config), async (req, res) => {
             break;
         }
 
-        // postbackが来たときのみ：鍵処理とリッチメニュー更新
+        // DBに更新があれば
+        if (Object.keys(updatedFields).length > 0) {
+          await supabase
+            .from("members")
+            .update(updatedFields)
+            .eq("userId", userId);
+          me = { ...me, ...updatedFields };
+        }
+
+        // 🔄 鍵自動更新
         await updateKeyStatus();
 
+        // 🔁 リッチメニュー再設定
+        const { data: all } = await supabase.from("members").select("status,notice");
+        const inLab = all.some(u => u.status === "研究室");
+        const inExp = all.some(u => u.status === "実験室");
+        const inCampus = all.some(u => u.status === "学内");
+
         const targetRichMenuId = getRichMenuId(
-          user.status,
+          me.status,
           labKey,
           expKey,
-          members.some(m => m.status === "研究室"),
-          members.some(m => m.status === "実験室"),
-          members.some(m => m.status === "学内"),
-          user.notice
+          inLab,
+          inExp,
+          inCampus,
+          me.notice
         );
-
-        const currentRichMenu = await client.getRichMenuIdOfUser(userId).catch(() => null);
-        if (targetRichMenuId && currentRichMenu !== targetRichMenuId) {
+        const current = await client.getRichMenuIdOfUser(userId).catch(() => null);
+        if (targetRichMenuId && current !== targetRichMenuId) {
           await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
         }
       }
     }
-
     res.sendStatus(200);
   } catch (err) {
-    console.error("🔥 Webhookエラー:", err);
+    console.error("🔥 Webhook error:", err);
     res.sendStatus(500);
   }
 });
 
 async function updateKeyStatus() {
-  const inLab = members.some(m => m.status === "研究室");
-  const inExp = members.some(m => m.status === "実験室");
+  const { data: all } = await supabase.from("members").select("status");
+  const inLab = all.some(u => u.status === "研究室");
+  const inExp = all.some(u => u.status === "実験室");
 
-  const oldLabKey = labKey;
-  const oldExpKey = expKey;
+  const oldLab = labKey, oldExp = expKey;
 
-  if (inLab && (labKey === "×" || labKey === "△")) labKey = "〇";
-  else if (!inLab && labKey === "〇") labKey = "△";
+  labKey = inLab ? (labKey === "×" || labKey === "△" ? "〇" : labKey)
+                 : (labKey === "〇" ? "△" : labKey);
 
-  if (inExp && (expKey === "×" || expKey === "△")) expKey = "〇";
-  else if (!inExp && expKey === "〇") expKey = "△";
+  expKey = inExp ? (expKey === "×" || expExp === "△" ? "〇" : expKey)
+                 : (expKey === "〇" ? "△" : expKey);
 
-  if (labKey !== oldLabKey && oldLabKey === "×" && labKey === "〇") {
+  if (oldLab === "×" && labKey === "〇") {
     await broadcast("研究室の鍵を取ったよ！", "lab");
   }
-
-  if (expKey !== oldExpKey && oldExpKey === "×" && expKey === "〇") {
+  if (oldExp === "×" && expKey === "〇") {
     await broadcast("実験室の鍵を取ったよ！", "exp");
   }
 }
 
-function createRoomMessage() {
-  const groupBy = status => members.filter(m => m.status === status);
-  const lab = groupBy("研究室");
-  const exp = groupBy("実験室");
-  const campus = groupBy("学内");
-
+function createRoomMessage(all) {
+  const groups = { 研究室: [], 実験室: [], 学内: [] };
+  all.forEach(u => {
+    if (groups[u.status]) groups[u.status].push(u.name);
+  });
   let msg = "";
-  if (lab.length) msg += `研究室\n${lab.map(m => `・${m.name}`).join("\n")}\n\n`;
-  if (exp.length) msg += `実験室\n${exp.map(m => `・${m.name}`).join("\n")}\n\n`;
-  if (campus.length) msg += `学内\n${campus.map(m => `・${m.name}`).join("\n")}`;
-
+  if (groups["研究室"].length) msg += `研究室\n${groups["研究室"].map(n => `・${n}`).join("\n")}\n\n`;
+  if (groups["実験室"].length) msg += `実験室\n${groups["実験室"].map(n => `・${n}`).join("\n")}\n\n`;
+  if (groups["学内"].length) msg += `学内\n${groups["学内"].map(n => `・${n}`).join("\n")}`;
   return msg.trim() || "誰もいないみたい…";
 }
 
-function getRichMenuId(status, lab, exp, inLab, inExp, inCampus, notice) {
-  if (!status) return null;
-  const filename = `${status}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}_${lab}_${exp}_${notice ? "on" : "off"}`;
-//  console.log(filename);
-  return richMenuMapping[filename];
-}
-
-async function broadcast(message, room) {
-  for (const m of members) {
-    if (m.notice) {
-      try {
-        await client.pushMessage(m.userId, {
-          type: "text",
-          text: message
-        });
-      } catch (err) {
-        console.error(`📤 ${m.name}への送信失敗:`, err);
-      }
-    }
+async function broadcast(msg, room) {
+  const { data: users } = await supabase
+    .from("members")
+    .select("userId")
+    .eq("notice", true);
+  for (const u of users) {
+    await client.pushMessage(u.userId, { type: "text", text: msg }).catch(console.error);
   }
 }
 
+function getRichMenuId(status, lab, exp, inLab, inExp, inCampus, notice) {
+  const filename = `${status}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}_${lab}_${exp}_${notice ? "on" : "off"}`;
+  return richMenuMapping[filename];
+}
+
 const richMenuMapping = {
-  // ここに新しいリッチメニューのマッピングを追加してください
+  // ...そのままリッチメニューIDをマッピングしてね！
   "学内_0_0_1_×_×_off": "richmenu-20da175cbfc9d116cce4266ede84e914",
   "学内_0_0_1_×_×_on": "richmenu-8514c2d8e1802d91f7305649fbe32004",
   "学内_0_0_1_×_△_off": "richmenu-1afe35a40d284269ad3800adbf1be129",
@@ -337,7 +335,4 @@ const richMenuMapping = {
   "研究室_1_1_1_〇_〇_on": "richmenu-2616ace51e4c79712fe4b0b0fb03c448",
 };
 
-// --- サーバー起動 ---
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
