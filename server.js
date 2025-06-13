@@ -59,44 +59,19 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (!me && event.type === "message" && event.message.type === "text") {
         const name = event.message.text.trim();
       
-        // 🔸 新規登録
-        const { data: newUser } = await supabase
-          .from("members")
-          .insert([{ name, userId, status: "学外", notice: true }])
-          .single();
-        me = newUser;
-      
-        // 🔁 最新の全メンバー情報を取得（この人を含む）
-        const { data: members } = await supabase.from("members").select("*");
-        
-        // 🔎 在室状況を判定
-        const inLab = members.filter(m => m.status === "研究室");
-        const inExp = members.filter(m => m.status === "実験室");
-        const inCampus = members.filter(m => m.status === "学内");
-        
-        // 🧠 鍵の状態も取得
-        const { data: keys } = await supabase.from("keys").select("*").single();
-        const labKey = keys?.lab ?? "×";
-        const expKey = keys?.exp ?? "×";
-        
-        // 📱 リッチメニューIDを取得（💡正しい引数で！）
-        const targetRichMenuId = getRichMenuId(
-          "学外",
-          inLab.length > 0,
-          inExp.length > 0,
-          inCampus.length > 0,
-          labKey, // ← ここが "〇" とかの文字列！
-          expKey,
-          true // 通知ON
-        );
-
-        await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
-      
-        // 💬 挨拶メッセージ
+        // 👤 名前登録後の処理
         await client.replyMessage(event.replyToken, {
           type: "text",
           text: `はじめまして！\n「${name}」として登録したよ！`,
         });
+        
+        // ✅ 初期リッチメニュー（学外_0_0_0_×_×_off）を強制で設定！
+        const targetRichMenuId = RICH_MENUS["学外_0_0_0_×_×_off"];
+        if (targetRichMenuId) {
+          await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
+        } else {
+          console.error("リッチメニューが見つからなかったよ！💥 学外_0_0_0_×_×_off");
+        }
       }
       if (!me) continue;
 
