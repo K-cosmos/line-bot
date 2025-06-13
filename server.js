@@ -59,18 +59,28 @@ app.post("/webhook", middleware(config), async (req, res) => {
       if (!me && event.type === "message" && event.message.type === "text") {
         const name = event.message.text.trim();
       
-        // 👤 名前登録後の処理
+        // データベースに新規ユーザーを登録
+        const { data: newUser } = await supabase
+          .from("members")
+          .insert([{ name, userId, status: "学外", notice: true }])
+          .single();
+        me = newUser;
+      
+        // 💬 あいさつメッセージを送信
         await client.replyMessage(event.replyToken, {
           type: "text",
           text: `はじめまして！\n「${name}」として登録したよ！`,
         });
-        
-        // ✅ 初期リッチメニュー（学外_0_0_0_×_×_off）を強制で設定！
-        const richMenuMapping = {
-          "学外_0_0_0_×_×_off": "richmenu-abc123def456",
-          // 必要に応じて他のリッチメニューもここに追加！
-        };
+      
+        // ✅ 強制で「学外_0_0_0_×_×_off」のリッチメニューを設定！
+        const fixedMenuId = richMenuMapping["学外_0_0_0_×_×_off"];
+        if (fixedMenuId) {
+          await client.linkRichMenuToUser(userId, fixedMenuId).catch(console.error);
+        } else {
+          console.warn("💥 該当リッチメニューが見つからなかったよ！");
+        }
       }
+
       if (!me) continue;
 
       if (event.type === "postback") {
