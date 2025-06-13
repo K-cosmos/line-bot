@@ -67,6 +67,12 @@ app.post("/webhook", middleware(config), async (req, res) => {
           type: "text",
           text: `はじめまして！\n「${name}」として登録したよ！`,
         });
+        // 🔁 リッチメニューを設定！
+        const inLab = false;
+        const inExp = false;
+        const inCampus = false;
+        const targetRichMenuId = getRichMenuId("学外", labKey, expKey, inLab, inExp, inCampus, true);
+        await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
       }
       if (!me) continue;
 
