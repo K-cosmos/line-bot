@@ -66,12 +66,10 @@ app.post("/webhook", middleware(config), async (req, res) => {
         });
         
         // ✅ 初期リッチメニュー（学外_0_0_0_×_×_off）を強制で設定！
-        const targetRichMenuId = RICH_MENUS["学外_0_0_0_×_×_off"];
-        if (targetRichMenuId) {
-          await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
-        } else {
-          console.error("リッチメニューが見つからなかったよ！💥 学外_0_0_0_×_×_off");
-        }
+        const richMenuMapping = {
+          "学外_0_0_0_×_×_off": "richmenu-abc123def456",
+          // 必要に応じて他のリッチメニューもここに追加！
+        };
       }
       if (!me) continue;
 
