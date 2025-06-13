@@ -262,6 +262,7 @@ async function broadcast(msg, room) {
 
 function getRichMenuId(status, lab, exp, inLab, inExp, inCampus, notice) {
   const filename = `${status}_${inLab ? 1 : 0}_${inExp ? 1 : 0}_${inCampus ? 1 : 0}_${lab}_${exp}_${notice ? "on" : "off"}`;
+  console.log("filename:", filename);
   return richMenuMapping[filename];
 }
 
