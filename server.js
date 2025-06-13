@@ -68,19 +68,28 @@ app.post("/webhook", middleware(config), async (req, res) => {
       
         // 🔁 最新の全メンバー情報を取得（この人を含む）
         const { data: members } = await supabase.from("members").select("*");
-      
+        
         // 🔎 在室状況を判定
         const inLab = members.filter(m => m.status === "研究室");
         const inExp = members.filter(m => m.status === "実験室");
         const inCampus = members.filter(m => m.status === "学内");
-      
+        
         // 🧠 鍵の状態も取得
         const { data: keys } = await supabase.from("keys").select("*").single();
         const labKey = keys?.lab ?? "×";
         const expKey = keys?.exp ?? "×";
-      
-        // 📱 リッチメニューを設定！
-        const targetRichMenuId = getRichMenuId("学外", inLab.length > 0, inExp.length > 0, inCampus.length > 0, labKey, expKey, true);
+        
+        // 📱 リッチメニューIDを取得（💡正しい引数で！）
+        const targetRichMenuId = getRichMenuId(
+          "学外",
+          inLab.length > 0,
+          inExp.length > 0,
+          inCampus.length > 0,
+          labKey, // ← ここが "〇" とかの文字列！
+          expKey,
+          true // 通知ON
+        );
+
         await client.linkRichMenuToUser(userId, targetRichMenuId).catch(console.error);
       
         // 💬 挨拶メッセージ
